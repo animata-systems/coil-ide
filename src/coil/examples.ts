@@ -18,7 +18,7 @@ export interface Example {
   id: string;
   name: string;
   group: ExampleGroup;
-  dialect: 'en-standard' | 'ru-matrix';
+  dialect: 'en-standard' | 'ru-standard' | 'ru-matrix';
   content: string;
 }
 
@@ -28,12 +28,12 @@ export const EXAMPLES: Example[] = [
   { id: 'hello-ru', name: 'Hello World (RU)', group: 'Hello World', dialect: 'ru-matrix', content: helloRu },
 
   // Паттерны
-  { id: 'routing', name: 'Маршрутизация', group: 'Паттерны', dialect: 'ru-matrix', content: routing },
-  { id: 'prompt-chaining', name: 'Цепочка промптов', group: 'Паттерны', dialect: 'ru-matrix', content: promptChaining },
-  { id: 'parallelization', name: 'Параллелизация', group: 'Паттерны', dialect: 'ru-matrix', content: parallelization },
-  { id: 'evaluator-optimizer', name: 'Оценщик-оптимизатор', group: 'Паттерны', dialect: 'ru-matrix', content: evaluatorOptimizer },
-  { id: 'internal-delegation', name: 'Внутренняя делегация', group: 'Паттерны', dialect: 'ru-matrix', content: internalDelegation },
-  { id: 'multi-agent-orchestration', name: 'Мультиагентная оркестрация', group: 'Паттерны', dialect: 'ru-matrix', content: multiAgentOrchestration },
+  { id: 'routing', name: 'Маршрутизация', group: 'Паттерны', dialect: 'ru-standard', content: routing },
+  { id: 'prompt-chaining', name: 'Цепочка промптов', group: 'Паттерны', dialect: 'ru-standard', content: promptChaining },
+  { id: 'parallelization', name: 'Параллелизация', group: 'Паттерны', dialect: 'ru-standard', content: parallelization },
+  { id: 'evaluator-optimizer', name: 'Оценщик-оптимизатор', group: 'Паттерны', dialect: 'ru-standard', content: evaluatorOptimizer },
+  { id: 'internal-delegation', name: 'Внутренняя делегация', group: 'Паттерны', dialect: 'ru-standard', content: internalDelegation },
+  { id: 'multi-agent-orchestration', name: 'Мультиагентная оркестрация', group: 'Паттерны', dialect: 'ru-standard', content: multiAgentOrchestration },
 
   // Антипаттерны
   { id: 'everything-in-one-think', name: 'Всё в одном THINK', group: 'Антипаттерны', dialect: 'en-standard', content: everythingInOneThink },
