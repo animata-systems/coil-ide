@@ -6,7 +6,7 @@ export function RightSidebar() {
   const [activeTab, setActiveTab] = useState<Tab>('validation');
 
   return (
-    <aside className="w-[360px] border-l border-gray-200 bg-white flex flex-col dark:border-gray-700 dark:bg-gray-900">
+    <aside className="w-[360px] shrink-0 border-l border-gray-200 bg-white flex flex-col dark:border-gray-700 dark:bg-gray-900">
       <div className="flex border-b border-gray-200 dark:border-gray-700">
         <button
           onClick={() => setActiveTab('validation')}
