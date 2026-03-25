@@ -1,20 +1,12 @@
-import enStandard from '../../../coil/dialects/en-standard/en-standard.json';
-import enProfanity from '../../../coil/dialects/en-profanity/en-profanity.json';
-import ruStandard from '../../../coil/dialects/ru-standard/ru-standard.json';
-import ruMatrix from '../../../coil/dialects/ru-matrix/ru-matrix.json';
-import ruMat from '../../../coil/dialects/ru-mat/ru-mat.json';
+import type { DialectTable } from 'coil-runtime/browser';
 
-// TODO: Phase 4 — replace with import from coil-runtime/browser
-export interface DialectTable {
-  name: string;
-  label: string;
-  operators: Record<string, string>;
-  terminators: Record<string, string>;
-  modifiers: Record<string, string>;
-  policies: Record<string, string>;
-  resultTypes: Record<string, string>;
-  durationSuffixes: Record<string, string>;
-}
+import enStandard from 'coil/dialects/en-standard/en-standard.json';
+import enProfanity from 'coil/dialects/en-profanity/en-profanity.json';
+import ruStandard from 'coil/dialects/ru-standard/ru-standard.json';
+import ruMatrix from 'coil/dialects/ru-matrix/ru-matrix.json';
+import ruMat from 'coil/dialects/ru-mat/ru-mat.json';
+
+export type { DialectTable };
 
 const ALL_DIALECTS: DialectTable[] = [
   enStandard as DialectTable,

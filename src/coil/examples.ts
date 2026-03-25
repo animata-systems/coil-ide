@@ -1,16 +1,16 @@
-import helloEn from '../../../coil/examples/hello.coil?raw';
-import helloRu from '../../../coil/examples/hello.ru.coil?raw';
-import routing from '../../../coil/examples/patterns/routing.coil?raw';
-import promptChaining from '../../../coil/examples/patterns/prompt-chaining.coil?raw';
-import parallelization from '../../../coil/examples/patterns/parallelization.coil?raw';
-import evaluatorOptimizer from '../../../coil/examples/patterns/evaluator-optimizer.coil?raw';
-import internalDelegation from '../../../coil/examples/patterns/internal-delegation.coil?raw';
-import multiAgentOrchestration from '../../../coil/examples/patterns/multi-agent-orchestration.coil?raw';
-import everythingInOneThink from '../../../coil/examples/anti-patterns/everything-in-one-think.coil?raw';
-import thinkForDeterministicCheck from '../../../coil/examples/anti-patterns/think-for-deterministic-check.coil?raw';
-import missingWait from '../../../coil/examples/anti-patterns/missing-wait.coil?raw';
-import defineInsteadOfSet from '../../../coil/examples/anti-patterns/define-instead-of-set.coil?raw';
-import sendWhenThinkNeeded from '../../../coil/examples/anti-patterns/send-when-think-needed.coil?raw';
+import helloEn from 'coil/examples/hello.coil?raw';
+import helloRu from 'coil/examples/hello.ru.coil?raw';
+import routing from 'coil/examples/patterns/routing.coil?raw';
+import promptChaining from 'coil/examples/patterns/prompt-chaining.coil?raw';
+import parallelization from 'coil/examples/patterns/parallelization.coil?raw';
+import evaluatorOptimizer from 'coil/examples/patterns/evaluator-optimizer.coil?raw';
+import internalDelegation from 'coil/examples/patterns/internal-delegation.coil?raw';
+import multiAgentOrchestration from 'coil/examples/patterns/multi-agent-orchestration.coil?raw';
+import everythingInOneThink from 'coil/examples/anti-patterns/everything-in-one-think.coil?raw';
+import thinkForDeterministicCheck from 'coil/examples/anti-patterns/think-for-deterministic-check.coil?raw';
+import missingWait from 'coil/examples/anti-patterns/missing-wait.coil?raw';
+import defineInsteadOfSet from 'coil/examples/anti-patterns/define-instead-of-set.coil?raw';
+import sendWhenThinkNeeded from 'coil/examples/anti-patterns/send-when-think-needed.coil?raw';
 
 export type ExampleGroup = 'Hello World' | 'Паттерны' | 'Антипаттерны';
 
