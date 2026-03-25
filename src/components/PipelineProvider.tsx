@@ -11,6 +11,7 @@ import type { editor } from 'monaco-editor';
 import {
   KeywordIndex,
   tokenize,
+  LexerError,
   parse,
   ParseError,
   validate,
@@ -40,8 +41,8 @@ interface PipelineContextValue extends PipelineState {
 const PipelineContext = createContext<PipelineContextValue | null>(null);
 
 function runPipeline(source: string, index: KeywordIndex, dialect: DialectTable): Omit<PipelineState, 'dialect'> {
-  const tokens = tokenize(source, index);
   try {
+    const tokens = tokenize(source, index);
     const ast = parse(tokens, dialect);
     const result = validate(ast);
     const diagnostics = result.diagnostics.filter(
@@ -49,14 +50,14 @@ function runPipeline(source: string, index: KeywordIndex, dialect: DialectTable)
     );
     return { source, tokens, ast, diagnostics, parseError: null };
   } catch (e) {
-    if (e instanceof ParseError) {
+    if (e instanceof LexerError || e instanceof ParseError) {
       const errorDiag: ValidationDiagnostic = {
         severity: 'error',
-        ruleId: 'parse-error',
+        ruleId: e instanceof LexerError ? 'lexer-error' : 'parse-error',
         message: e.message,
         span: e.span,
       };
-      return { source, tokens, ast: null, diagnostics: [errorDiag], parseError: e.message };
+      return { source, tokens: null, ast: null, diagnostics: [errorDiag], parseError: e.message };
     }
     throw e;
   }
