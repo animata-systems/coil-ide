@@ -43,7 +43,7 @@ const PipelineContext = createContext<PipelineContextValue | null>(null);
 function runPipeline(source: string, index: KeywordIndex, dialect: DialectTable): Omit<PipelineState, 'dialect'> {
   try {
     const tokens = tokenize(source, index);
-    const ast = parse(tokens, dialect);
+    const ast = parse(tokens, dialect, source);
     const result = validate(ast);
     const diagnostics = result.diagnostics.filter(
       d => d.ruleId !== 'unsupported-operator',
