@@ -7,14 +7,19 @@ import type {
   ExecuteNode,
   WaitNode,
   SignalNode,
+  IfNode,
+  RepeatNode,
+  EachNode,
   DialectTable,
   BodyValue,
   ResultField,
   ArgEntry,
+  OperatorNode,
+  CommentNode,
 } from 'coil-runtime/browser';
 
 export interface CoilHRow {
-  step: number | null;
+  step: number[] | null;
   operatorId: string;
   body: string;
   name: string;
@@ -201,11 +206,33 @@ function extractDegradedBody(source: string, span: { offset: number; length: num
   return lines.join('\n').trim();
 }
 
-export function astToCoilH(ast: ScriptNode, source: string, viewDialect: DialectTable): CoilHRow[] {
-  const rows: CoilHRow[] = [];
-  let step = 0;
+function buildIfBody(node: IfNode): string {
+  return node.condition;
+}
 
-  for (const node of ast.nodes) {
+function buildRepeatBody(node: RepeatNode, dialect: DialectTable): string {
+  const parts: string[] = [];
+  if (node.until) {
+    parts.push(`${dialect.modifiers['Mod.Until']} ${node.until}`);
+  }
+  parts.push(`${dialect.modifiers['Mod.Limit']} ${node.limit}`);
+  return parts.join(' ');
+}
+
+function buildEachBody(node: EachNode, dialect: DialectTable): string {
+  return `${refToText(node.element.name, node.element.path)} ${dialect.modifiers['Mod.From']} ${refToText(node.from.name, node.from.path)}`;
+}
+
+function convertNodes(
+  nodes: (OperatorNode | CommentNode)[],
+  prefix: number[],
+  rows: CoilHRow[],
+  source: string,
+  dialect: DialectTable,
+): void {
+  let counter = 0;
+
+  for (const node of nodes) {
     if (node.kind === 'Comment') {
       const prev = rows[rows.length - 1];
       if (prev && prev.mode === 'divider') {
@@ -223,7 +250,8 @@ export function astToCoilH(ast: ScriptNode, source: string, viewDialect: Dialect
       continue;
     }
 
-    step++;
+    counter++;
+    const step = [...prefix, counter];
 
     switch (node.kind) {
       case 'Op.Receive': {
@@ -245,7 +273,7 @@ export function astToCoilH(ast: ScriptNode, source: string, viewDialect: Dialect
         rows.push({
           step,
           operatorId: 'Op.Send',
-          body: buildSendBody(node, viewDialect),
+          body: buildSendBody(node, dialect),
           name: node.name ?? '',
           mode: 'full',
           templates,
@@ -324,7 +352,7 @@ export function astToCoilH(ast: ScriptNode, source: string, viewDialect: Dialect
         rows.push({
           step,
           operatorId: 'Op.Think',
-          body: buildThinkBody(node, viewDialect),
+          body: buildThinkBody(node, dialect),
           name: `$${node.name}`,
           mode: 'full',
           templates,
@@ -335,7 +363,7 @@ export function astToCoilH(ast: ScriptNode, source: string, viewDialect: Dialect
         rows.push({
           step,
           operatorId: 'Op.Execute',
-          body: buildExecuteBody(node, viewDialect),
+          body: buildExecuteBody(node, dialect),
           name: `$${node.name}`,
           mode: 'full',
           templates: [],
@@ -346,7 +374,7 @@ export function astToCoilH(ast: ScriptNode, source: string, viewDialect: Dialect
         rows.push({
           step,
           operatorId: 'Op.Wait',
-          body: buildWaitBody(node, viewDialect),
+          body: buildWaitBody(node, dialect),
           name: '',
           mode: 'full',
           templates: [],
@@ -367,11 +395,47 @@ export function astToCoilH(ast: ScriptNode, source: string, viewDialect: Dialect
         });
         break;
       }
+      case 'Op.If': {
+        rows.push({
+          step,
+          operatorId: 'Op.If',
+          body: buildIfBody(node),
+          name: '',
+          mode: 'full',
+          templates: [],
+        });
+        convertNodes(node.body, step, rows, source, dialect);
+        break;
+      }
+      case 'Op.Repeat': {
+        rows.push({
+          step,
+          operatorId: 'Op.Repeat',
+          body: buildRepeatBody(node, dialect),
+          name: '',
+          mode: 'full',
+          templates: [],
+        });
+        convertNodes(node.body, step, rows, source, dialect);
+        break;
+      }
+      case 'Op.Each': {
+        rows.push({
+          step,
+          operatorId: 'Op.Each',
+          body: buildEachBody(node, dialect),
+          name: '',
+          mode: 'full',
+          templates: [],
+        });
+        convertNodes(node.body, step, rows, source, dialect);
+        break;
+      }
       case 'Unsupported': {
         rows.push({
           step,
           operatorId: node.operatorId,
-          body: extractDegradedBody(source, node.span, viewDialect),
+          body: extractDegradedBody(source, node.span, dialect),
           name: '',
           mode: 'degraded',
           templates: [],
@@ -380,6 +444,10 @@ export function astToCoilH(ast: ScriptNode, source: string, viewDialect: Dialect
       }
     }
   }
+}
 
+export function astToCoilH(ast: ScriptNode, source: string, viewDialect: DialectTable): CoilHRow[] {
+  const rows: CoilHRow[] = [];
+  convertNodes(ast.nodes, [], rows, source, viewDialect);
   return rows;
 }

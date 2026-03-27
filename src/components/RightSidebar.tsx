@@ -162,7 +162,7 @@ function CoilHPanel() {
                   className={isDegraded ? 'text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-200'}
                 >
                   <td className="px-2 py-1.5 align-top text-gray-400 dark:text-gray-500">
-                    {row.step}
+                    {row.step?.join('.')}
                   </td>
                   <td className="px-2 py-1.5 align-top font-medium">
                     {operatorKeyword}

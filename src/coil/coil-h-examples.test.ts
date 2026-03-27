@@ -100,4 +100,36 @@ describe('Phase 2 examples — no degraded rows', () => {
     expect(ops).toContain('Op.Send');
     expect(ops).toContain('Op.Exit');
   });
+
+  it('routing.coil — IF operators have nested numbering', () => {
+    const source = readExample('patterns/routing.coil');
+    const dialect = dialects['ru-standard'];
+    const rows = parseAndMap(source, dialect);
+    const ifRows = rows.filter(r => r.operatorId === 'Op.If');
+    expect(ifRows.length).toBeGreaterThan(0);
+    // Nested DEFINE inside IF should have sub-numbering
+    for (const ifRow of ifRows) {
+      const ifStep = ifRow.step!;
+      expect(ifStep).toHaveLength(1); // top-level
+      // Find nested rows
+      const nested = rows.filter(r =>
+        r.step !== null && r.step.length === 2 && r.step[0] === ifStep[0],
+      );
+      expect(nested.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('evaluator-optimizer.coil — REPEAT operator has nested numbering', () => {
+    const source = readExample('patterns/evaluator-optimizer.coil');
+    const dialect = dialects['ru-standard'];
+    const rows = parseAndMap(source, dialect);
+    const repeatRows = rows.filter(r => r.operatorId === 'Op.Repeat');
+    expect(repeatRows).toHaveLength(1);
+    const repeatStep = repeatRows[0].step!;
+    // Nested operators inside REPEAT
+    const nested = rows.filter(r =>
+      r.step !== null && r.step.length > 1 && r.step[0] === repeatStep[0],
+    );
+    expect(nested.length).toBeGreaterThan(0);
+  });
 });

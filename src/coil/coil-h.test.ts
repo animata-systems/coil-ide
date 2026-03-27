@@ -73,7 +73,7 @@ describe('Op.Actors', () => {
     expect(r[0].body).toBe('alice, bob');
     expect(r[0].name).toBe('');
     expect(r[0].mode).toBe('full');
-    expect(r[0].step).toBe(1);
+    expect(r[0].step).toEqual([1]);
   });
 
   it('maps block УЧАСТНИКИ to full-mode row (ru)', () => {
@@ -384,6 +384,120 @@ describe('Op.Signal', () => {
   });
 });
 
+// ── Op.If ─────────────────────────────────────────────────
+
+describe('Op.If', () => {
+  it('maps IF with nested operators and sub-numbering', () => {
+    const src = [
+      'ACTORS user',
+      '',
+      'IF $x == 1',
+      '  EXIT',
+      'END',
+      '',
+      'EXIT',
+    ].join('\n');
+    const r = rows(src, en);
+    // ACTORS=[1], IF=[2], EXIT=[2,1], EXIT=[3]
+    const full = r.filter(row => row.mode === 'full');
+    expect(full[0].step).toEqual([1]);
+    expect(full[0].operatorId).toBe('Op.Actors');
+    expect(full[1].step).toEqual([2]);
+    expect(full[1].operatorId).toBe('Op.If');
+    expect(full[1].body).toBe('$x == 1');
+    expect(full[2].step).toEqual([2, 1]);
+    expect(full[2].operatorId).toBe('Op.Exit');
+    expect(full[3].step).toEqual([3]);
+    expect(full[3].operatorId).toBe('Op.Exit');
+  });
+
+  it('maps ЕСЛИ with multiple nested steps (ru)', () => {
+    const src = [
+      'ЕСЛИ $flag == 1',
+      '  ОПРЕДЕЛИ msg',
+      '  "hello"',
+      '  КОНЕЦ',
+      '  ВЫХОД',
+      'КОНЕЦ',
+    ].join('\n');
+    const r = rows(src, ru);
+    const full = r.filter(row => row.mode === 'full');
+    expect(full[0].step).toEqual([1]);
+    expect(full[0].operatorId).toBe('Op.If');
+    expect(full[1].step).toEqual([1, 1]);
+    expect(full[1].operatorId).toBe('Op.Define');
+    expect(full[2].step).toEqual([1, 2]);
+    expect(full[2].operatorId).toBe('Op.Exit');
+  });
+
+  it('maps double nesting (IF inside IF)', () => {
+    const src = [
+      'IF $a == 1',
+      '  IF $b == 2',
+      '    EXIT',
+      '  END',
+      'END',
+    ].join('\n');
+    const r = rows(src, en);
+    const full = r.filter(row => row.mode === 'full');
+    expect(full[0].step).toEqual([1]);       // outer IF
+    expect(full[1].step).toEqual([1, 1]);    // inner IF
+    expect(full[2].step).toEqual([1, 1, 1]); // EXIT
+  });
+
+  it('comment inside block does not affect numbering', () => {
+    const src = [
+      'IF $x == 1',
+      "  ' note",
+      '  EXIT',
+      'END',
+    ].join('\n');
+    const r = rows(src, en);
+    const dividers = r.filter(row => row.mode === 'divider');
+    expect(dividers).toHaveLength(1);
+    const full = r.filter(row => row.mode === 'full');
+    expect(full[1].step).toEqual([1, 1]); // EXIT, not [1, 2]
+  });
+});
+
+// ── Op.Repeat ─────────────────────────────────────────────
+
+describe('Op.Repeat', () => {
+  it('maps ПОВТОРЯЙ with until and limit', () => {
+    const src = [
+      'ПОВТОРЯЙ ДО $done НЕ БОЛЕЕ 3',
+      '  ВЫХОД',
+      'КОНЕЦ',
+    ].join('\n');
+    const r = rows(src, ru);
+    const full = r.filter(row => row.mode === 'full');
+    expect(full[0].step).toEqual([1]);
+    expect(full[0].operatorId).toBe('Op.Repeat');
+    expect(full[0].body).toContain('ДО');
+    expect(full[0].body).toContain('НЕ БОЛЕЕ 3');
+    expect(full[1].step).toEqual([1, 1]);
+    expect(full[1].operatorId).toBe('Op.Exit');
+  });
+});
+
+// ── Op.Each ───────────────────────────────────────────────
+
+describe('Op.Each', () => {
+  it('maps EACH with element and from', () => {
+    const src = [
+      'EACH $item FROM $list',
+      '  EXIT',
+      'END',
+    ].join('\n');
+    const r = rows(src, en);
+    const full = r.filter(row => row.mode === 'full');
+    expect(full[0].step).toEqual([1]);
+    expect(full[0].operatorId).toBe('Op.Each');
+    expect(full[0].body).toBe('$item FROM $list');
+    expect(full[1].step).toEqual([1, 1]);
+  });
+});
+
 // ── Mixed scenario ─────────────────────────────────────────
 
 describe('mixed operators', () => {
@@ -403,12 +517,12 @@ describe('mixed operators', () => {
     const r = rows(src, en);
     // ACTORS=1, divider, RECEIVE=2, EXIT=3
     expect(r).toHaveLength(4);
-    expect(r[0].step).toBe(1);
+    expect(r[0].step).toEqual([1]);
     expect(r[0].operatorId).toBe('Op.Actors');
     expect(r[1].mode).toBe('divider');
-    expect(r[2].step).toBe(2);
+    expect(r[2].step).toEqual([2]);
     expect(r[2].operatorId).toBe('Op.Receive');
-    expect(r[3].step).toBe(3);
+    expect(r[3].step).toEqual([3]);
     expect(r[3].operatorId).toBe('Op.Exit');
   });
 });
