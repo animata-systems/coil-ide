@@ -3,66 +3,85 @@ import type { editor } from 'monaco-editor';
 export const COIL_LIGHT_THEME = 'coil-light';
 export const COIL_DARK_THEME = 'coil-dark';
 
+// Palette inspired by modern IDE themes — soft purple keywords,
+// warm orange templates, green types, cyan participants.
+
 export const coilLightTheme: editor.IStandaloneThemeData = {
   base: 'vs',
   inherit: true,
   rules: [
-    // Keywords
-    { token: 'keyword.operator', foreground: '7c3aed', fontStyle: 'bold' },   // purple-600
-    { token: 'keyword.terminator', foreground: '7c3aed' },                     // purple-600
-    { token: 'keyword.modifier', foreground: '0369a1' },                       // sky-700
-    { token: 'keyword.policy', foreground: '0369a1', fontStyle: 'italic' },    // sky-700
-    { token: 'keyword.type', foreground: '6d28d9' },                           // violet-700
+    // Keywords — rich purple
+    { token: 'keyword.operator', foreground: '5530a8' },
+    { token: 'keyword.terminator', foreground: '5530a8' },
+    { token: 'keyword.modifier', foreground: '1868a0' },                       // sky blue
+    { token: 'keyword.policy', foreground: '7050a8', fontStyle: 'italic' },
+    { token: 'keyword.type', foreground: '987020' },                           // warm yellow
 
     // Sigils
-    { token: 'variable', foreground: 'c2410c' },              // orange-700
-    { token: 'entity.participant', foreground: '15803d' },     // green-700
-    { token: 'entity.channel', foreground: '0e7490' },        // cyan-700
-    { token: 'entity.promise', foreground: 'a16207' },        // yellow-700
-    { token: 'entity.tool', foreground: 'b91c1c' },           // red-700
-    { token: 'entity.stream', foreground: '7e22ce' },         // purple-700
+    { token: 'variable', foreground: '987020' },              // warm yellow
+    { token: 'entity.participant', foreground: '207080' },     // teal/cyan
+    { token: 'entity.channel', foreground: '2868a0' },         // blue
+    { token: 'entity.promise', foreground: '987020' },         // warm gold
+    { token: 'entity.tool', foreground: 'a04040' },            // muted red
+    { token: 'entity.stream', foreground: '7050a8' },          // purple
 
-    // Templates
-    { token: 'delimiter.template', foreground: '9a3412' },    // orange-800
-    { token: 'string.template', foreground: '92400e' },       // amber-800
+    // Templates — green like types were
+    { token: 'delimiter.template', foreground: '207048' },    // green
+    { token: 'string.template', foreground: '207048' },       // green
 
     // Duration
-    { token: 'number.duration', foreground: '0f766e' },       // teal-700
+    { token: 'number.duration', foreground: '207080' },       // teal
 
     // Comments
-    { token: 'comment', foreground: '6b7280', fontStyle: 'italic' },  // gray-500
+    { token: 'comment', foreground: '8a8a8a', fontStyle: 'italic' },
   ],
-  colors: {},
+  colors: {
+    'editor.background': '#fcfcfa',
+    'editor.foreground': '#383838',
+    'editorLineNumber.foreground': '#b0b0ae',
+    'editorLineNumber.activeForeground': '#707070',
+    'editor.lineHighlightBackground': '#f3f3f0',
+    'editor.selectionBackground': '#d0d2ce',
+    'editorCursor.foreground': '#5060a0',
+  },
 };
 
 export const coilDarkTheme: editor.IStandaloneThemeData = {
   base: 'vs-dark',
   inherit: true,
   rules: [
-    // Keywords
-    { token: 'keyword.operator', foreground: 'c084fc', fontStyle: 'bold' },   // purple-400
-    { token: 'keyword.terminator', foreground: 'c084fc' },                     // purple-400
-    { token: 'keyword.modifier', foreground: '7dd3fc' },                       // sky-300
-    { token: 'keyword.policy', foreground: '7dd3fc', fontStyle: 'italic' },    // sky-300
-    { token: 'keyword.type', foreground: 'a78bfa' },                           // violet-400
+    // Keywords — rich purple
+    { token: 'keyword.operator', foreground: 'c490e0' },
+    { token: 'keyword.terminator', foreground: 'c490e0' },
+    { token: 'keyword.modifier', foreground: '58b0e8' },                       // sky blue
+    { token: 'keyword.policy', foreground: 'b898cc', fontStyle: 'italic' },
+    { token: 'keyword.type', foreground: 'd8c880' },                           // warm yellow
 
     // Sigils
-    { token: 'variable', foreground: 'fb923c' },              // orange-400
-    { token: 'entity.participant', foreground: '4ade80' },     // green-400
-    { token: 'entity.channel', foreground: '22d3ee' },        // cyan-400
-    { token: 'entity.promise', foreground: 'facc15' },        // yellow-400
-    { token: 'entity.tool', foreground: 'f87171' },           // red-400
-    { token: 'entity.stream', foreground: 'e879f9' },         // fuchsia-400
+    { token: 'variable', foreground: 'd8c880' },              // warm yellow
+    { token: 'entity.participant', foreground: '6cd0d8' },     // cyan
+    { token: 'entity.channel', foreground: '7cb8e0' },         // light blue
+    { token: 'entity.promise', foreground: 'd8c880' },         // warm gold
+    { token: 'entity.tool', foreground: 'e08080' },            // soft red
+    { token: 'entity.stream', foreground: 'b898cc' },          // purple
 
-    // Templates
-    { token: 'delimiter.template', foreground: 'fb923c' },    // orange-400
-    { token: 'string.template', foreground: 'fbbf24' },       // amber-400
+    // Templates — green
+    { token: 'delimiter.template', foreground: '8cd4a8' },    // green
+    { token: 'string.template', foreground: '8cd4a8' },       // green
 
     // Duration
-    { token: 'number.duration', foreground: '2dd4bf' },       // teal-400
+    { token: 'number.duration', foreground: '6cd0d8' },       // cyan
 
     // Comments
-    { token: 'comment', foreground: '6b7280', fontStyle: 'italic' },  // gray-500
+    { token: 'comment', foreground: '687078', fontStyle: 'italic' },
   ],
-  colors: {},
+  colors: {
+    'editor.background': '#141416',
+    'editor.foreground': '#c4c4c4',
+    'editorLineNumber.foreground': '#484a4c',
+    'editorLineNumber.activeForeground': '#707274',
+    'editor.lineHighlightBackground': '#1e1e20',
+    'editor.selectionBackground': '#303338',
+    'editorCursor.foreground': '#a090d0',
+  },
 };

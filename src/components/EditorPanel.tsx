@@ -7,10 +7,12 @@ import { usePipeline } from './PipelineProvider';
 import { DEFAULT_DIALECT } from '../coil/dialects';
 import { ensureThemes, ensureLanguage, coilThemeName, languageId } from '../coil/languages';
 import { spanToRange } from '../coil/monaco-utils';
+import { EditorTabs } from './EditorTabs';
+import { EmptyEditor } from './EmptyEditor';
 
 export function EditorPanel() {
   const { resolvedTheme } = useTheme();
-  const { activeExample } = useExample();
+  const { activeExample, openExamples, setCursorPosition } = useExample();
   const { diagnostics, source, updateSource, registerEditor } = usePipeline();
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
@@ -24,13 +26,16 @@ export function EditorPanel() {
     editorRef.current = ed;
     monacoRef.current = monaco;
     registerEditor(ed);
+    ed.onDidChangeCursorPosition(e => {
+      setCursorPosition({ line: e.position.lineNumber, column: e.position.column });
+    });
   };
 
   // Switch example content and dialect
   useEffect(() => {
     const ed = editorRef.current;
     const monaco = monacoRef.current;
-    if (!ed || !monaco) return;
+    if (!ed || !monaco || !activeExample) return;
 
     ed.setValue(activeExample.content);
     ensureLanguage(activeExample.dialect, monaco);
@@ -66,24 +71,55 @@ export function EditorPanel() {
     }
   }
 
+  if (openExamples.length === 0 || !activeExample) {
+    return (
+      <div className="flex h-full flex-col">
+        <EditorTabs />
+        <EmptyEditor />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex-1 min-w-[400px] overflow-hidden">
-      <Editor
-        defaultValue={activeExample.content}
-        defaultLanguage={`coil-${DEFAULT_DIALECT}`}
-        theme={coilThemeName(resolvedTheme)}
-        beforeMount={handleBeforeMount}
-        onMount={handleMount}
-        onChange={handleChange}
-        options={{
-          minimap: { enabled: false },
-          fontSize: 14,
-          lineNumbers: 'on',
-          scrollBeyondLastLine: false,
-          automaticLayout: true,
-          wordWrap: 'on',
-        }}
-      />
+    <div className="flex h-full flex-col">
+      <EditorTabs />
+      <div className="flex-1 min-h-0">
+        <Editor
+          defaultValue={activeExample.content}
+          defaultLanguage={`coil-${DEFAULT_DIALECT}`}
+          theme={coilThemeName(resolvedTheme)}
+          beforeMount={handleBeforeMount}
+          onMount={handleMount}
+          onChange={handleChange}
+          options={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 14,
+            lineHeight: 24,
+            minimap: { enabled: false },
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+            wordWrap: 'on',
+            padding: { top: 16, bottom: 16 },
+            smoothScrolling: true,
+            cursorBlinking: 'smooth',
+            cursorSmoothCaretAnimation: 'on',
+            tabSize: 2,
+            folding: true,
+            lineNumbers: 'on',
+            lineNumbersMinChars: 4,
+            glyphMargin: false,
+            overviewRulerLanes: 0,
+            hideCursorInOverviewRuler: true,
+            overviewRulerBorder: false,
+            scrollbar: {
+              vertical: 'auto',
+              horizontal: 'auto',
+              verticalScrollbarSize: 10,
+              horizontalScrollbarSize: 10,
+            },
+          }}
+        />
+      </div>
     </div>
   );
 }

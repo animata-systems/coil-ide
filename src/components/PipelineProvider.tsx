@@ -21,7 +21,7 @@ import {
   type ValidationDiagnostic,
 } from 'coil-runtime/browser';
 import { useExample } from './ExampleProvider';
-import { dialectRegistry } from '../coil/dialects';
+import { dialectRegistry, DEFAULT_DIALECT } from '../coil/dialects';
 
 interface PipelineState {
   source: string;
@@ -70,10 +70,11 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const indexCacheRef = useRef<{ name: string; index: KeywordIndex } | null>(null);
 
   const getDialect = useCallback((): DialectTable => {
-    const d = dialectRegistry.get(activeExample.dialect);
-    if (!d) throw new Error(`Unknown dialect: ${activeExample.dialect}`);
+    const dialectKey = activeExample?.dialect ?? DEFAULT_DIALECT;
+    const d = dialectRegistry.get(dialectKey);
+    if (!d) throw new Error(`Unknown dialect: ${dialectKey}`);
     return d;
-  }, [activeExample.dialect]);
+  }, [activeExample?.dialect]);
 
   const getIndex = useCallback((dialect: DialectTable): KeywordIndex => {
     const cached = indexCacheRef.current;
@@ -84,6 +85,10 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const [state, setState] = useState<PipelineState>(() => {
+    if (!activeExample) {
+      const dialect = dialectRegistry.get(DEFAULT_DIALECT)!;
+      return { source: '', dialect, tokens: null, ast: null, diagnostics: [], parseError: null };
+    }
     const dialect = getDialect();
     const index = getIndex(dialect);
     return { ...runPipeline(activeExample.content, index, dialect), dialect };
@@ -94,6 +99,10 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
+    }
+    if (!activeExample) {
+      setState(prev => ({ ...prev, source: '', tokens: null, ast: null, diagnostics: [], parseError: null }));
+      return;
     }
     const dialect = getDialect();
     const index = getIndex(dialect);

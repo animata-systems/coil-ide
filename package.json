@@ -15,6 +15,7 @@
     "@monaco-editor/react": "^4.7.0",
     "coil": "github:animata-systems/coil",
     "coil-runtime": "github:animata-systems/coil-runtime",
+    "lucide-react": "^1.7.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
