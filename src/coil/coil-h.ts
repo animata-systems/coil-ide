@@ -3,8 +3,14 @@ import type {
   TemplateNode,
   SendNode,
   ReceiveNode,
+  ThinkNode,
+  ExecuteNode,
+  WaitNode,
+  SignalNode,
   DialectTable,
   BodyValue,
+  ResultField,
+  ArgEntry,
 } from 'coil-runtime/browser';
 
 export interface CoilHRow {
@@ -67,9 +73,7 @@ function buildSendBody(node: SendNode, dialect: DialectTable): string {
     parts.push(`${dialect.modifiers['Mod.Await']} ${policyMap[node.await] ?? node.await}`);
   }
   if (node.timeout) {
-    const suffix = Object.values(dialect.durationSuffixes).find((_, i) =>
-      Object.keys(dialect.durationSuffixes)[i] === node.timeout!.unitId,
-    ) ?? '';
+    const suffix = dialect.durationSuffixes[node.timeout.unitId] ?? '';
     parts.push(`${dialect.modifiers['Mod.Timeout']} ${node.timeout.value}${suffix}`);
   }
 
@@ -85,6 +89,100 @@ function buildReceiveBody(node: ReceiveNode): string {
   if (!node.prompt) return '';
   const text = templateToText(node.prompt).trim();
   return text ? `<< ${text} >>` : '';
+}
+
+function argValueToText(value: ArgEntry['value']): string {
+  switch (value.type) {
+    case 'ref':
+      return refToText(value.name, value.path);
+    case 'string':
+      return value.value;
+    case 'number':
+      return String(value.value);
+  }
+}
+
+function buildResultBlock(fields: ResultField[], dialect: DialectTable): string {
+  const lines: string[] = [];
+  for (const f of fields) {
+    const indent = '  '.repeat(f.depth);
+    let typeName = dialect.resultTypes[f.typeId] ?? f.typeId;
+    if (f.typeArgs.length > 0) {
+      typeName += `(${f.typeArgs.join(', ')})`;
+    }
+    const desc = f.description ? ` — ${f.description}` : '';
+    lines.push(`${indent}* ${f.name}: ${typeName}${desc}`);
+  }
+  return lines.join('\n');
+}
+
+function buildThinkBody(node: ThinkNode, dialect: DialectTable): string {
+  const parts: string[] = [];
+
+  // 1. Оснащение: ЧЕРЕЗ, КАК, ИСПОЛЬЗУЯ (I-0003)
+  if (node.via) {
+    parts.push(`${dialect.modifiers['Mod.Via']} ${refToText(node.via.name, node.via.path)}`);
+  }
+  if (node.as.length > 0) {
+    parts.push(`${dialect.modifiers['Mod.As']} ${node.as.map(a => refToText(a.name, a.path)).join(', ')}`);
+  }
+  if (node.using.length > 0) {
+    parts.push(`${dialect.modifiers['Mod.Using']} ${node.using.map(t => `!${t.name}`).join(', ')}`);
+  }
+
+  // 2. Постановка: ЦЕЛЬ, ВХОД, КОНТЕКСТ
+  if (node.goal) {
+    const text = templateToText(node.goal).trim();
+    if (text) parts.push(`${dialect.modifiers['Mod.Goal']} << ${text} >>`);
+  }
+  if (node.input) {
+    const text = templateToText(node.input).trim();
+    if (text) parts.push(`${dialect.modifiers['Mod.Input']} << ${text} >>`);
+  }
+  if (node.context) {
+    const text = templateToText(node.context).trim();
+    if (text) parts.push(`${dialect.modifiers['Mod.Context']} << ${text} >>`);
+  }
+
+  // 3. РЕЗУЛЬТАТ (pre-блок)
+  if (node.result.length > 0) {
+    const block = buildResultBlock(node.result, dialect);
+    parts.push(`${dialect.modifiers['Mod.Result']}\n${block}`);
+  }
+
+  // 4. Анонимное тело (D-0032)
+  if (node.body) {
+    const text = templateToText(node.body).trim();
+    if (text) parts.push(`<< ${text} >>`);
+  }
+
+  return parts.join('\n');
+}
+
+function buildExecuteBody(node: ExecuteNode, dialect: DialectTable): string {
+  const parts: string[] = [];
+  parts.push(`${dialect.modifiers['Mod.Using']} !${node.tool.name}`);
+  for (const arg of node.args) {
+    parts.push(`- ${arg.key}: ${argValueToText(arg.value)}`);
+  }
+  return parts.join('\n');
+}
+
+function buildWaitBody(node: WaitNode, dialect: DialectTable): string {
+  const parts: string[] = [];
+  parts.push(`${dialect.modifiers['Mod.On']} ${node.on.map(p => `?${p.name}`).join(', ')}`);
+  if (node.mode) {
+    const policyMap: Record<string, string> = {
+      any: dialect.policies['Pol.Any'],
+      all: dialect.policies['Pol.All'],
+    };
+    parts.push(`${dialect.modifiers['Mod.Mode']} ${policyMap[node.mode] ?? node.mode}`);
+  }
+  if (node.timeout) {
+    const suffix = dialect.durationSuffixes[node.timeout.unitId] ?? '';
+    parts.push(`${dialect.modifiers['Mod.Timeout']} ${node.timeout.value}${suffix}`);
+  }
+  return parts.join('\n');
 }
 
 function extractDegradedBody(source: string, span: { offset: number; length: number }, dialect: DialectTable): string {
@@ -212,6 +310,58 @@ export function astToCoilH(ast: ScriptNode, source: string, viewDialect: Dialect
           operatorId: 'Op.Set',
           body: bodyValueToText(node.body),
           name: refToText(node.target.name, node.target.path),
+          mode: 'full',
+          templates,
+        });
+        break;
+      }
+      case 'Op.Think': {
+        const templates: string[] = [];
+        if (node.goal) templates.push(templateToText(node.goal).trim());
+        if (node.input) templates.push(templateToText(node.input).trim());
+        if (node.context) templates.push(templateToText(node.context).trim());
+        if (node.body) templates.push(templateToText(node.body).trim());
+        rows.push({
+          step,
+          operatorId: 'Op.Think',
+          body: buildThinkBody(node, viewDialect),
+          name: `$${node.name}`,
+          mode: 'full',
+          templates,
+        });
+        break;
+      }
+      case 'Op.Execute': {
+        rows.push({
+          step,
+          operatorId: 'Op.Execute',
+          body: buildExecuteBody(node, viewDialect),
+          name: `$${node.name}`,
+          mode: 'full',
+          templates: [],
+        });
+        break;
+      }
+      case 'Op.Wait': {
+        rows.push({
+          step,
+          operatorId: 'Op.Wait',
+          body: buildWaitBody(node, viewDialect),
+          name: '',
+          mode: 'full',
+          templates: [],
+        });
+        break;
+      }
+      case 'Op.Signal': {
+        const bodyText = templateToText(node.body).trim();
+        const templates: string[] = [];
+        if (bodyText) templates.push(bodyText);
+        rows.push({
+          step,
+          operatorId: 'Op.Signal',
+          body: bodyText ? `<< ${bodyText} >>` : '',
+          name: `~${node.target.name}`,
           mode: 'full',
           templates,
         });

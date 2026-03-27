@@ -37,18 +37,67 @@ const phase1Examples = [
   { file: 'anti-patterns/define-instead-of-set.coil', dialect: 'en-standard' },
 ];
 
+function parseAndMap(source: string, dialect: DialectTable) {
+  const index = KeywordIndex.build(dialect);
+  const tokens = tokenize(source, index);
+  const ast = parse(tokens, dialect, source);
+  return astToCoilH(ast, source, dialect);
+}
+
 describe('Phase 1 examples — no degraded rows', () => {
   for (const { file, dialect: dialectName } of phase1Examples) {
     it(`${file} has no degraded rows`, () => {
       const source = readExample(file);
       const dialect = dialects[dialectName];
-      const index = KeywordIndex.build(dialect);
-      const tokens = tokenize(source, index);
-      const ast = parse(tokens, dialect, source);
-      const rows = astToCoilH(ast, source, dialect);
+      const rows = parseAndMap(source, dialect);
 
       const degraded = rows.filter(r => r.mode === 'degraded');
       expect(degraded, `degraded rows: ${degraded.map(r => r.operatorId).join(', ')}`).toHaveLength(0);
     });
   }
+});
+
+/**
+ * Phase 2 examples: contain THINK, EXECUTE, WAIT, SIGNAL operators.
+ * Should have zero degraded rows.
+ */
+const phase2Examples = [
+  { file: 'anti-patterns/everything-in-one-think.coil', dialect: 'en-standard' },
+  { file: 'patterns/parallelization.coil', dialect: 'ru-standard' },
+  { file: 'patterns/routing.coil', dialect: 'ru-standard' },
+  { file: 'patterns/prompt-chaining.coil', dialect: 'ru-standard' },
+  { file: 'patterns/evaluator-optimizer.coil', dialect: 'ru-standard' },
+];
+
+describe('Phase 2 examples — no degraded rows', () => {
+  for (const { file, dialect: dialectName } of phase2Examples) {
+    it(`${file} has no degraded rows`, () => {
+      const source = readExample(file);
+      const dialect = dialects[dialectName];
+      const rows = parseAndMap(source, dialect);
+
+      const degraded = rows.filter(r => r.mode === 'degraded');
+      expect(degraded, `degraded rows: ${degraded.map(r => r.operatorId).join(', ')}`).toHaveLength(0);
+    });
+  }
+
+  it('parallelization.coil — correct operator counts', () => {
+    const source = readExample('patterns/parallelization.coil');
+    const dialect = dialects['ru-standard'];
+    const rows = parseAndMap(source, dialect);
+    const ops = rows.filter(r => r.mode === 'full').map(r => r.operatorId);
+    expect(ops.filter(o => o === 'Op.Think')).toHaveLength(4);
+    expect(ops.filter(o => o === 'Op.Wait')).toHaveLength(2);
+  });
+
+  it('everything-in-one-think.coil — key operators present', () => {
+    const source = readExample('anti-patterns/everything-in-one-think.coil');
+    const dialect = dialects['en-standard'];
+    const rows = parseAndMap(source, dialect);
+    const ops = rows.filter(r => r.mode === 'full').map(r => r.operatorId);
+    expect(ops).toContain('Op.Think');
+    expect(ops).toContain('Op.Wait');
+    expect(ops).toContain('Op.Send');
+    expect(ops).toContain('Op.Exit');
+  });
 });

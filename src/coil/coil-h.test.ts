@@ -148,6 +148,242 @@ describe('Op.Set', () => {
   });
 });
 
+// ── Op.Think ──────────────────────────────────────────────
+
+describe('Op.Think', () => {
+  it('maps minimal THINK (name only, no modifiers)', () => {
+    const src = [
+      'THINK step',
+      '  GOAL <<',
+      '  Classify this.',
+      '  >>',
+      '  RESULT',
+      '  * answer: TEXT - the answer',
+      'END',
+    ].join('\n');
+    const r = rows(src, en);
+    expect(r).toHaveLength(1);
+    expect(r[0].operatorId).toBe('Op.Think');
+    expect(r[0].name).toBe('$step');
+    expect(r[0].mode).toBe('full');
+    expect(r[0].body).toContain('GOAL');
+    expect(r[0].body).toContain('RESULT');
+    expect(r[0].body).toContain('* answer: TEXT');
+  });
+
+  it('maps ДУМАЙ with full modifiers (КАК, ЦЕЛЬ, ВХОД, РЕЗУЛЬТАТ)', () => {
+    const src = [
+      'ДУМАЙ review',
+      '  КАК $role',
+      '  ЦЕЛЬ <<',
+      '  Проверьте код.',
+      '  >>',
+      '  ВХОД <<',
+      '  $message',
+      '  >>',
+      '  РЕЗУЛЬТАТ',
+      '  * issues: ТЕКСТ - найденные проблемы',
+      '  * score: ЧИСЛО - оценка от 1 до 10',
+      'КОНЕЦ',
+    ].join('\n');
+    const r = rows(src, ru);
+    expect(r).toHaveLength(1);
+    const row = r[0];
+    expect(row.operatorId).toBe('Op.Think');
+    expect(row.name).toBe('$review');
+    expect(row.mode).toBe('full');
+    // Check modifier order per I-0003: оснащение → постановка → РЕЗУЛЬТАТ
+    const lines = row.body.split('\n');
+    const asIdx = lines.findIndex(l => l.startsWith('КАК'));
+    const goalIdx = lines.findIndex(l => l.startsWith('ЦЕЛЬ'));
+    const inputIdx = lines.findIndex(l => l.startsWith('ВХОД'));
+    const resultIdx = lines.findIndex(l => l.startsWith('РЕЗУЛЬТАТ'));
+    expect(asIdx).toBeLessThan(goalIdx);
+    expect(goalIdx).toBeLessThan(inputIdx);
+    expect(inputIdx).toBeLessThan(resultIdx);
+    // Check templates collected
+    expect(row.templates).toContain('Проверьте код.');
+    expect(row.templates).toContain('$message');
+  });
+
+  it('maps ДУМАЙ with КОНТЕКСТ and anonymous body (D-0032)', () => {
+    const src = [
+      'ДУМАЙ analysis',
+      '  ЦЕЛЬ <<',
+      '  Analyse.',
+      '  >>',
+      '  КОНТЕКСТ <<',
+      '  Background info.',
+      '  >>',
+      '  РЕЗУЛЬТАТ',
+      '  * summary: ТЕКСТ - итог',
+      '  <<',
+      '  Additional instructions here.',
+      '  >>',
+      'КОНЕЦ',
+    ].join('\n');
+    const r = rows(src, ru);
+    expect(r).toHaveLength(1);
+    const body = r[0].body;
+    expect(body).toContain('КОНТЕКСТ');
+    expect(body).toContain('РЕЗУЛЬТАТ');
+    expect(body).toContain('<< Additional instructions here. >>');
+    // Body template should be in templates
+    expect(r[0].templates).toContain('Additional instructions here.');
+  });
+
+  it('maps RESULT with nested LIST fields (depth indentation)', () => {
+    const src = [
+      'THINK step',
+      '  RESULT',
+      '  * summary: TEXT - brief',
+      '  * items: LIST - found items',
+      '    * name: TEXT - item name',
+      '    * score: NUMBER - relevance',
+      'END',
+    ].join('\n');
+    const r = rows(src, en);
+    const body = r[0].body;
+    expect(body).toContain('RESULT');
+    expect(body).toContain('* summary: TEXT — brief');
+    expect(body).toContain('* items: LIST — found items');
+    expect(body).toContain('  * name: TEXT — item name');
+    expect(body).toContain('  * score: NUMBER — relevance');
+  });
+
+  it('maps RESULT with CHOICE type args', () => {
+    const src = [
+      'THINK classify',
+      '  RESULT',
+      '  * type: CHOICE(general, refund, technical) - request type',
+      'END',
+    ].join('\n');
+    const r = rows(src, en);
+    const body = r[0].body;
+    expect(body).toContain('CHOICE(general, refund, technical)');
+  });
+
+  it('maps ДУМАЙ with ЧЕРЕЗ and ИСПОЛЬЗУЯ', () => {
+    const src = [
+      'ДУМАЙ step',
+      '  ЧЕРЕЗ $agent',
+      '  ИСПОЛЬЗУЯ !search, !calc',
+      '  ЦЕЛЬ <<',
+      '  Find answer.',
+      '  >>',
+      '  РЕЗУЛЬТАТ',
+      '  * answer: ТЕКСТ - ответ',
+      'КОНЕЦ',
+    ].join('\n');
+    const r = rows(src, ru);
+    const body = r[0].body;
+    const lines = body.split('\n');
+    expect(lines[0]).toBe('ЧЕРЕЗ $agent');
+    expect(lines[1]).toBe('ИСПОЛЬЗУЯ !search, !calc');
+  });
+});
+
+// ── Op.Execute ────────────────────────────────────────────
+
+describe('Op.Execute', () => {
+  it('maps EXECUTE with tool and args', () => {
+    const src = [
+      'EXECUTE result',
+      '  USING !search',
+      '  - query: "test query"',
+      '  - limit: 10',
+      'END',
+    ].join('\n');
+    const r = rows(src, en);
+    expect(r).toHaveLength(1);
+    expect(r[0].operatorId).toBe('Op.Execute');
+    expect(r[0].name).toBe('$result');
+    expect(r[0].mode).toBe('full');
+    expect(r[0].body).toContain('USING !search');
+    expect(r[0].body).toContain('- query: test query');
+    expect(r[0].body).toContain('- limit: 10');
+  });
+
+  it('maps ВЫПОЛНИ with ref arg value', () => {
+    const src = [
+      'ВЫПОЛНИ result',
+      '  ИСПОЛЬЗУЯ !api',
+      '  - data: $input.value',
+      'КОНЕЦ',
+    ].join('\n');
+    const r = rows(src, ru);
+    expect(r).toHaveLength(1);
+    expect(r[0].body).toContain('ИСПОЛЬЗУЯ !api');
+    expect(r[0].body).toContain('- data: $input.value');
+  });
+});
+
+// ── Op.Wait ───────────────────────────────────────────────
+
+describe('Op.Wait', () => {
+  it('maps WAIT with single promise', () => {
+    const src = [
+      'WAIT',
+      '  ON ?step1',
+      'END',
+    ].join('\n');
+    const r = rows(src, en);
+    expect(r).toHaveLength(1);
+    expect(r[0].operatorId).toBe('Op.Wait');
+    expect(r[0].name).toBe('');
+    expect(r[0].mode).toBe('full');
+    expect(r[0].body).toBe('ON ?step1');
+  });
+
+  it('maps ЖДИ with multiple promises and mode ALL', () => {
+    const src = [
+      'ЖДИ',
+      '  НА ?review1, ?review2, ?review3',
+      '  РЕЖИМ ВСЕ',
+      'КОНЕЦ',
+    ].join('\n');
+    const r = rows(src, ru);
+    expect(r).toHaveLength(1);
+    const body = r[0].body;
+    expect(body).toContain('НА ?review1, ?review2, ?review3');
+    expect(body).toContain('РЕЖИМ ВСЕ');
+  });
+
+  it('maps WAIT with timeout', () => {
+    const src = [
+      'WAIT',
+      '  ON ?task',
+      '  TIMEOUT 30s',
+      'END',
+    ].join('\n');
+    const r = rows(src, en);
+    const body = r[0].body;
+    expect(body).toContain('ON ?task');
+    expect(body).toContain('TIMEOUT 30');
+  });
+});
+
+// ── Op.Signal ─────────────────────────────────────────────
+
+describe('Op.Signal', () => {
+  it('maps SIGNAL with template body', () => {
+    const src = [
+      'SIGNAL ~updates',
+      '<<',
+      'New data available: $result.summary',
+      '>>',
+      'END',
+    ].join('\n');
+    const r = rows(src, en);
+    expect(r).toHaveLength(1);
+    expect(r[0].operatorId).toBe('Op.Signal');
+    expect(r[0].name).toBe('~updates');
+    expect(r[0].mode).toBe('full');
+    expect(r[0].body).toContain('New data available: $result.summary');
+    expect(r[0].templates).toContain('New data available: $result.summary');
+  });
+});
+
 // ── Mixed scenario ─────────────────────────────────────────
 
 describe('mixed operators', () => {
@@ -176,3 +412,4 @@ describe('mixed operators', () => {
     expect(r[3].operatorId).toBe('Op.Exit');
   });
 });
+
