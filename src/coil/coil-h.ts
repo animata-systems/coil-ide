@@ -4,6 +4,7 @@ import type {
   SendNode,
   ReceiveNode,
   DialectTable,
+  BodyValue,
 } from 'coil-runtime/browser';
 
 export interface CoilHRow {
@@ -16,10 +17,27 @@ export interface CoilHRow {
   templates: string[];
 }
 
+export function refToText(name: string, path: string[]): string {
+  return `$${name}${path.length ? '.' + path.join('.') : ''}`;
+}
+
 export function templateToText(tpl: TemplateNode): string {
   return tpl.parts.map(p =>
-    p.type === 'text' ? p.value : `$${p.name}${p.path.length ? '.' + p.path.join('.') : ''}`,
+    p.type === 'text' ? p.value : refToText(p.name, p.path),
   ).join('');
+}
+
+export function bodyValueToText(body: BodyValue): string {
+  switch (body.type) {
+    case 'template':
+      return `<< ${templateToText(body).trim()} >>`;
+    case 'ref':
+      return refToText(body.name, body.path);
+    case 'string':
+      return body.value;
+    case 'number':
+      return String(body.value);
+  }
 }
 
 function buildSendBody(node: SendNode, dialect: DialectTable): string {
@@ -144,6 +162,58 @@ export function astToCoilH(ast: ScriptNode, source: string, viewDialect: Dialect
           name: '',
           mode: 'full',
           templates: [],
+        });
+        break;
+      }
+      case 'Op.Actors': {
+        rows.push({
+          step,
+          operatorId: 'Op.Actors',
+          body: node.names.join(', '),
+          name: '',
+          mode: 'full',
+          templates: [],
+        });
+        break;
+      }
+      case 'Op.Tools': {
+        rows.push({
+          step,
+          operatorId: 'Op.Tools',
+          body: node.names.join(', '),
+          name: '',
+          mode: 'full',
+          templates: [],
+        });
+        break;
+      }
+      case 'Op.Define': {
+        const templates: string[] = [];
+        if (node.body.type === 'template') {
+          templates.push(templateToText(node.body).trim());
+        }
+        rows.push({
+          step,
+          operatorId: 'Op.Define',
+          body: bodyValueToText(node.body),
+          name: `$${node.name}`,
+          mode: 'full',
+          templates,
+        });
+        break;
+      }
+      case 'Op.Set': {
+        const templates: string[] = [];
+        if (node.body.type === 'template') {
+          templates.push(templateToText(node.body).trim());
+        }
+        rows.push({
+          step,
+          operatorId: 'Op.Set',
+          body: bodyValueToText(node.body),
+          name: refToText(node.target.name, node.target.path),
+          mode: 'full',
+          templates,
         });
         break;
       }

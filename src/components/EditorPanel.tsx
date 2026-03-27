@@ -51,7 +51,9 @@ export function EditorPanel() {
     const markers = diagnostics.map(d => ({
       severity: d.severity === 'error'
         ? monaco.MarkerSeverity.Error
-        : monaco.MarkerSeverity.Warning,
+        : d.severity === 'info'
+          ? monaco.MarkerSeverity.Info
+          : monaco.MarkerSeverity.Warning,
       message: d.message,
       ...spanToRange(d.span, source),
     }));

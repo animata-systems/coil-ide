@@ -9,9 +9,12 @@ type Tab = 'validation' | 'coil-h';
 
 // ── Validation Panel ────────────────────────────────────
 
-function SeverityIcon({ severity }: { severity: 'error' | 'warning' }) {
+function SeverityIcon({ severity }: { severity: 'error' | 'warning' | 'info' }) {
   if (severity === 'error') {
     return <span className="text-red-500 shrink-0" aria-label="error">●</span>;
+  }
+  if (severity === 'info') {
+    return <span className="text-blue-500 shrink-0" aria-label="info">●</span>;
   }
   return <span className="text-yellow-500 shrink-0" aria-label="warning">●</span>;
 }

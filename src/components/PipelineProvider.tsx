@@ -44,7 +44,7 @@ function runPipeline(source: string, index: KeywordIndex, dialect: DialectTable)
   try {
     const tokens = tokenize(source, index);
     const ast = parse(tokens, dialect, source);
-    const result = validate(ast);
+    const result = validate(ast, dialect);
     const diagnostics = result.diagnostics.filter(
       d => d.ruleId !== 'unsupported-operator',
     );
