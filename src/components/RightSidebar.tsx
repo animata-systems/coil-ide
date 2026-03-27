@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { usePipeline } from './PipelineProvider';
 import { useExample } from './ExampleProvider';
-import { dialectRegistry } from '../coil/dialects';
+import { dialectRegistry, DEFAULT_DIALECT } from '../coil/dialects';
 import { astToCoilH, type CoilHRow } from '../coil/coil-h';
 import { translateTemplate } from '../coil/template-translations';
 
@@ -98,10 +98,10 @@ function translateBody(row: CoilHRow, exampleId: string, dialectName: string): s
 export function CoilHPanel() {
   const { ast, source, parseError } = usePipeline();
   const { activeExample } = useExample();
-  const [coilHDialect, setCoilHDialect] = useState<string>(activeExample.dialect);
+  const [coilHDialect, setCoilHDialect] = useState<string>(activeExample?.dialect ?? DEFAULT_DIALECT);
 
   useEffect(() => {
-    setCoilHDialect(activeExample.dialect);
+    setCoilHDialect(activeExample?.dialect ?? DEFAULT_DIALECT);
   }, [activeExample]);
 
   const viewDialect = dialectRegistry.get(coilHDialect);
