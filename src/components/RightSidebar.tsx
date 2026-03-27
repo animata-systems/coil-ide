@@ -19,10 +19,19 @@ function SeverityIcon({ severity }: { severity: 'error' | 'warning' | 'info' }) 
   return <span className="text-yellow-500 shrink-0" aria-label="warning">●</span>;
 }
 
+const SEVERITY_ORDER: Record<string, number> = { error: 0, warning: 1, info: 2 };
+
 function ValidationPanel() {
   const { diagnostics, revealDiagnostic } = usePipeline();
 
-  if (diagnostics.length === 0) {
+  const sorted = useMemo(() =>
+    [...diagnostics].sort((a, b) =>
+      (SEVERITY_ORDER[a.severity] ?? 3) - (SEVERITY_ORDER[b.severity] ?? 3),
+    ),
+    [diagnostics],
+  );
+
+  if (sorted.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-sm text-gray-400 dark:text-gray-500">
         Ошибок нет
@@ -33,7 +42,7 @@ function ValidationPanel() {
   return (
     <div className="flex-1 overflow-y-auto">
       <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-        {diagnostics.map((d, i) => (
+        {sorted.map((d, i) => (
           <li
             key={i}
             onClick={() => revealDiagnostic(d)}

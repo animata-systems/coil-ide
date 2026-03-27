@@ -6,7 +6,6 @@ import type {
   ThinkNode,
   ExecuteNode,
   WaitNode,
-  SignalNode,
   IfNode,
   RepeatNode,
   EachNode,
@@ -78,7 +77,7 @@ function buildSendBody(node: SendNode, dialect: DialectTable): string {
     parts.push(`${dialect.modifiers['Mod.Await']} ${policyMap[node.await] ?? node.await}`);
   }
   if (node.timeout) {
-    const suffix = dialect.durationSuffixes[node.timeout.unitId] ?? '';
+    const suffix = (dialect.durationSuffixes as Record<string, string>)[node.timeout.unitId] ?? '';
     parts.push(`${dialect.modifiers['Mod.Timeout']} ${node.timeout.value}${suffix}`);
   }
 
@@ -111,7 +110,7 @@ function buildResultBlock(fields: ResultField[], dialect: DialectTable): string 
   const lines: string[] = [];
   for (const f of fields) {
     const indent = '  '.repeat(f.depth);
-    let typeName = dialect.resultTypes[f.typeId] ?? f.typeId;
+    let typeName = (dialect.resultTypes as Record<string, string>)[f.typeId] ?? f.typeId;
     if (f.typeArgs.length > 0) {
       typeName += `(${f.typeArgs.join(', ')})`;
     }
@@ -184,7 +183,7 @@ function buildWaitBody(node: WaitNode, dialect: DialectTable): string {
     parts.push(`${dialect.modifiers['Mod.Mode']} ${policyMap[node.mode] ?? node.mode}`);
   }
   if (node.timeout) {
-    const suffix = dialect.durationSuffixes[node.timeout.unitId] ?? '';
+    const suffix = (dialect.durationSuffixes as Record<string, string>)[node.timeout.unitId] ?? '';
     parts.push(`${dialect.modifiers['Mod.Timeout']} ${node.timeout.value}${suffix}`);
   }
   return parts.join('\n');
