@@ -1,5 +1,4 @@
 import { X } from 'lucide-react';
-import { EXAMPLES } from '../coil/examples';
 import { useExample } from './ExampleProvider';
 
 interface EditorTabProps {
@@ -43,7 +42,7 @@ function EditorTab({ name, isActive, onClick, onClose }: EditorTabProps) {
 }
 
 export function EditorTabs() {
-  const { openExamples, activeExample, setExample, closeExample } = useExample();
+  const { openExamples, activeExample, setExample, closeExample, allExamples } = useExample();
 
   if (openExamples.length === 0) {
     return (
@@ -56,7 +55,7 @@ export function EditorTabs() {
   return (
     <div className="flex h-11 items-center gap-1 px-2 overflow-x-auto">
       {openExamples.map(id => {
-        const example = EXAMPLES.find(e => e.id === id);
+        const example = allExamples.find(e => e.id === id);
         if (!example) return null;
         return (
           <EditorTab

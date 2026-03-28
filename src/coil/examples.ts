@@ -12,13 +12,13 @@ import missingWait from 'coil/examples/anti-patterns/missing-wait.coil?raw';
 import defineInsteadOfSet from 'coil/examples/anti-patterns/define-instead-of-set.coil?raw';
 import sendWhenThinkNeeded from 'coil/examples/anti-patterns/send-when-think-needed.coil?raw';
 
-export type ExampleGroup = 'Hello World' | 'Паттерны' | 'Антипаттерны';
+export type ExampleGroup = 'Мои файлы' | 'Hello World' | 'Паттерны' | 'Антипаттерны';
 
 export interface Example {
   id: string;
   name: string;
   group: ExampleGroup;
-  dialect: 'en-standard' | 'ru-standard' | 'ru-matrix';
+  dialect: string;
   content: string;
 }
 
@@ -43,4 +43,4 @@ export const EXAMPLES: Example[] = [
   { id: 'send-when-think-needed', name: 'SEND вместо THINK', group: 'Антипаттерны', dialect: 'en-standard', content: sendWhenThinkNeeded },
 ];
 
-export const EXAMPLE_GROUPS: ExampleGroup[] = ['Hello World', 'Паттерны', 'Антипаттерны'];
+export const EXAMPLE_GROUPS: ExampleGroup[] = ['Мои файлы', 'Hello World', 'Паттерны', 'Антипаттерны'];

@@ -1,12 +1,15 @@
 import { useState } from 'react';
-import { ChevronRight, ChevronDown, File, Folder, FolderOpen } from 'lucide-react';
-import { EXAMPLES, EXAMPLE_GROUPS, type ExampleGroup } from '../coil/examples';
+import { ChevronRight, ChevronDown, File, Folder, FolderOpen, Plus } from 'lucide-react';
+import { EXAMPLE_GROUPS, type ExampleGroup } from '../coil/examples';
 import { useExample } from './ExampleProvider';
+import { NewFileDialog } from './NewFileDialog';
 
 function ExampleFolder({ group }: { group: ExampleGroup }) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const { selectedFile, openExample, openExamples, setExample, setSelectedFile } = useExample();
-  const items = EXAMPLES.filter(e => e.group === group);
+  const { selectedFile, openExample, openExamples, setExample, setSelectedFile, allExamples } = useExample();
+  const items = allExamples.filter(e => e.group === group);
+
+  if (items.length === 0) return null;
 
   return (
     <div>
@@ -59,18 +62,33 @@ function ExampleFolder({ group }: { group: ExampleGroup }) {
 }
 
 export function LeftSidebar() {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const { createFile } = useExample();
+
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-9 shrink-0 items-center px-3">
+      <div className="flex h-9 shrink-0 items-center justify-between px-3">
         <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Explorer
         </span>
+        <button
+          onClick={() => setDialogOpen(true)}
+          className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-colors"
+          title="New file"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto px-1 pb-2">
         {EXAMPLE_GROUPS.map(group => (
           <ExampleFolder key={group} group={group} />
         ))}
       </div>
+      <NewFileDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onCreateFile={createFile}
+      />
     </div>
   );
 }
