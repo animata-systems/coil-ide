@@ -79,9 +79,9 @@
 | **Статус** | принят как направление |
 | **Решено** | 2026-04-09 |
 | **Scope** | coil-ide/package.json, coil-ide/src/**, coil-ide/playground/**, coil-ide/vite.config.ts |
-| **Связан с** | STORY-015, правило `.claude/rules/submodule-autonomy.md` |
+| **Связан с** | никаких `../` путей наружу |
 
-**Контекст.** STORY-015 требует, чтобы компоненты coil-ide были доступны из coil-sandbox для показа кода агентов. Правило `submodule-autonomy.md` запрещает `../` пути между подмодулями — единственный способ подключения — git-зависимость в `package.json` (как сейчас `coil` и `coil-runtime` через I-0001/R-0013).
+**Контекст.** Компоненты coil-ide должны стать доступны внешнему потребителю (coil-sandbox) для показа кода агентов. Запрещается `../` пути между модулями — единственный способ подключения — git-зависимость в `package.json` (как сейчас `coil` и `coil-runtime` через I-0001/R-0013).
 
 Рассматривались три варианта раскладки:
 - **A.** Монорепо с workspaces (`packages/coil-ide-components` + `apps/playground`). Проблема: `npm install github:animata-systems/coil-ide` не умеет ставить sub-package из git-репо. pnpm/yarn поддерживают нестандартными расширениями, что привязывает потребителя к конкретному менеджеру пакетов.
@@ -152,7 +152,7 @@ Playground использует уже опубликованный пакет �
 | **Статус** | принят как направление |
 | **Решено** | 2026-04-09 |
 | **Scope** | coil-ide/src/coil/coil-h.ts, coil-ide/src/components/RightSidebar.tsx (CoilHTable), coil-ide/src/coil/coil-h*.test.ts |
-| **Связан с** | STORY-015 фаза 3, `coil/spec/11-coil-h.md` §11.5 |
+| **Связан с** | `coil/spec/11-coil-h.md` §11.5 |
 
 **Контекст.** Текущая модель `CoilHRow.body: string` (`coil-h.ts:20`) — плоский текст, куда `astToCoilH` склеивает модификаторы через `\n` и буквально вставляет маркеры шаблона `<< … >>`. Визуальные следствия:
 - пользователь видит физические `<<` и `>>` вокруг шаблонов;
@@ -228,14 +228,14 @@ interface CoilHRow {
 | **Статус** | принят как направление |
 | **Решено** | 2026-04-09 |
 | **Scope** | coil-sandbox/src/web/**, coil-sandbox/package.json, coil-sandbox/vite.config.ts (новый) |
-| **Связан с** | STORY-015 фаза 5, I-0004 |
+| **Связан с** | I-0004 |
 
 **Контекст.** Sandbox web-UI (`coil-sandbox/src/web/public/index.html`) — vanilla JS, сервится статикой через Express. React, Vite, Monaco в sandbox отсутствуют. Компоненты coil-ide — React 19 + Monaco + Tailwind v4. Прямое подключение через `<script>` невозможно.
 
 Варианты:
-- **A.** Полный перевод sandbox web-UI на React/Vite. Переписывается весь `index.html` (каналы, посты, threads, server switcher). Большой объём не по теме story.
+- **A.** Полный перевод sandbox web-UI на React/Vite. Переписывается весь `index.html` (каналы, посты, threads, server switcher). Большой объём не по теме задачи интеграции.
 - **B.** React-«остров»: отдельный Vite-bundle, подключаемый к существующему vanilla index.html как `<script type="module">`, React монтируется в конкретный DOM-узел, остальная страница остаётся vanilla.
-- **C.** Использовать только headless-часть пакета (`astToCoilH`, parse, validate), рендерить таблицу и подсветку на vanilla с нуля. Теряется одна из целей story — переиспользование UI-компонентов.
+- **C.** Использовать только headless-часть пакета (`astToCoilH`, parse, validate), рендерить таблицу и подсветку на vanilla с нуля. Теряется одна из целей задачи — переиспользование UI-компонентов.
 
 **Решение.** Вариант B.
 
@@ -258,7 +258,7 @@ coil-sandbox/
 Интеграция в текущий UI:
 - в `index.html` добавляется `<div id="agent-viewer-root"></div>` (панель/модалка рядом с текущим контентом);
 - клик на имени агента в левом sidebar (уже есть событие в vanilla JS) диспатчит кастомное событие/вызывает глобальную функцию, экспортированную из viewer-бандла, с именем агента;
-- viewer запрашивает код через новое socket-событие `get-agent-source` (фаза 4) и рендерит через `CoilHTable` / `EditorPanel` из пакета.
+- viewer запрашивает код через socket-событие `get-agent-source` (серверный контракт — в `coil-sandbox/src/web/server.ts`) и рендерит через `CoilHTable` / `EditorPanel` из пакета.
 
 Sandbox подключает пакет coil-ide как git-зависимость в `package.json`:
 ```json
@@ -285,7 +285,7 @@ Sandbox подключает пакет coil-ide как git-зависимост
 | **Статус** | принят как направление |
 | **Решено** | 2026-04-09 |
 | **Scope** | coil-ide/src/components/EditorPanel.tsx, coil-ide/src/components/PipelineProvider.tsx, coil-ide/playground/components/** |
-| **Связан с** | STORY-015 фаза 2, I-0004, I-0006, S-0001 |
+| **Связан с** | I-0004, I-0006, S-0001 |
 
 **Контекст.** I-0004 декларирует, что `EditorPanel` и `PipelineProvider` попадают в библиотеку (`src/`), а `ThemeProvider`, `ExampleProvider`, `EditorTabs`, `EmptyEditor` — в playground (`playground/`). Текущая реализация этому противоречит:
 
@@ -336,7 +336,7 @@ Sandbox подключает пакет coil-ide как git-зависимост
 Библиотека (`coil-ide/src/`):
 - `components/EditorView.tsx` (новый)
 - `components/PipelineProvider.tsx` (переписан, props-based)
-- `components/CoilHTable.tsx` (извлечь из `RightSidebar.tsx` в Фазе 3)
+- `components/CoilHTable.tsx` (извлекается из `RightSidebar.tsx` отдельным шагом)
 - `coil/*.ts` — pipeline utilities, coil-h, dialects, monarch, languages, themes, monaco-utils
 - `index.ts`, `headless.ts` — публичные entry points
 
@@ -356,17 +356,17 @@ Playground (`coil-ide/playground/`):
 - Core-логика pipeline перестаёт знать про «примеры» — это чище концептуально: «пример» — playground-понятие, pipeline про него знать не должен.
 
 **Цена.**
-- Два новых файла в Фазе 2: `EditorView.tsx` (библиотека) и `PlaygroundPipelineBridge.tsx` (playground).
+- Два новых файла в рамках расщепления: `EditorView.tsx` (библиотека) и `PlaygroundPipelineBridge.tsx` (playground).
 - `PipelineProvider` переписывается: уходит `useExample`, появляется пара props `source` + `dialect`. Существующее поведение сохраняется, но это всё же переписывание public API провайдера.
 - `EditorPanel` переписывается как тонкая обёртка. Старый effect на `activeExample` превращается в передачу `value` в `EditorView`, логика `setModelLanguage` переезжает внутрь `EditorView`.
-- Визуальная регрессия playground — основной риск. Mitigate: визуальная проверка после перекладки, до расщепления `CoilHPanel` (Фаза 3).
+- Визуальная регрессия playground — основной риск. Mitigate: визуальная проверка после перекладки, до расщепления `CoilHPanel` (следующий шаг).
 
 **Что НЕ меняется.**
 - Раскладка файлов, `exports`, peerDeps, vite-конфиги — по I-0004 без изменений.
 - Тесты `coil-h*.test.ts` — они не зависят от React-компонентов.
 - Поведение pipeline: те же tokenize→parse→validate, тот же debounce, тот же revealDiagnostic.
 
-**Уточнение (2026-04-09, по итогам Фазы 2 ревью).** Контракт `EditorView.dialect` сужен со `DialectTable` до `string`. Компонент использует диалект только как ключ для `ensureLanguage(key, monaco)` и `setModelLanguage(model, languageId(key))` — ни то, ни другое не нуждается в полной таблице. Выгоды: (а) потребитель передаёт просто `"ru-standard"` вместо импорта `dialectRegistry` ради одного prop'а, что критично для sandbox-остров (I-0006, S-0001); (б) контракт концептуально честнее — «имя языка для Monaco» ≠ «таблица диалекта для парсера». Цена: `EditorView` опосредованно зависит от глобального `dialectRegistry` (внутри `ensureLanguage`); расширение до кастомных диалектов, зарегистрированных потребителем, потребует либо опционального `dialectTable?: DialectTable` prop'а, либо явного параметра на `ensureLanguage`. Отложено как задача на момент, когда кастомные диалекты появятся вне библиотеки.
+**Уточнение (2026-04-09, по итогам ревью расщепления).** Контракт `EditorView.dialect` сужен со `DialectTable` до `string`. Компонент использует диалект только как ключ для `ensureLanguage(key, monaco)` и `setModelLanguage(model, languageId(key))` — ни то, ни другое не нуждается в полной таблице. Выгоды: (а) потребитель передаёт просто `"ru-standard"` вместо импорта `dialectRegistry` ради одного prop'а, что критично для sandbox-остров (I-0006, S-0001); (б) контракт концептуально честнее — «имя языка для Monaco» ≠ «таблица диалекта для парсера». Цена: `EditorView` опосредованно зависит от глобального `dialectRegistry` (внутри `ensureLanguage`); расширение до кастомных диалектов, зарегистрированных потребителем, потребует либо опционального `dialectTable?: DialectTable` prop'а, либо явного параметра на `ensureLanguage`. Отложено как задача на момент, когда кастомные диалекты появятся вне библиотеки.
 
 ---
 
@@ -377,11 +377,11 @@ Playground (`coil-ide/playground/`):
 | **Статус** | принят |
 | **Дата** | 2026-04-09 |
 | **Scope** | `src/styles/theme.css` (новый), `package.json` (exports + files), `playground/index.css`, внешние потребители (`coil-sandbox` viewer) |
-| **Связан с** | I-0004, I-0005, I-0006, I-0007, S-0001, STORY-015 фаза 5 |
+| **Связан с** | I-0004, I-0005, I-0006, I-0007, S-0001 |
 
 **Контекст.** `CoilHTable` и другие будущие библиотечные компоненты активно используют тематические Tailwind-классы (`text-foreground`, `text-primary`, `bg-primary/15`, `text-muted-foreground`, `bg-ide-panel`, `divide-foreground/5` и т.д.). В Tailwind v4 эти классы резолвятся только при наличии `@theme inline` блока, который маппит токены на CSS-переменные `--primary`, `--color-foreground`, `--color-ide-panel`. Сейчас этот блок вместе с определениями переменных живёт только в `playground/index.css` — то есть является частью **приложения playground**, а не **библиотеки coil-ide**.
 
-Это делает библиотеку невидимо зависимой от инфраструктуры playground'а: внешний потребитель (sandbox viewer, STORY-015 фаза 5) подключает `CoilHTable` и получает компонент, у которого все классы разрешаются в «нет стиля» — визуально компонент рендерится пустым или сломанным. Обнаружилось на фазе 5 группе B (ревью плана реализации 5.4).
+Это делает библиотеку невидимо зависимой от инфраструктуры playground'а: внешний потребитель (sandbox viewer) подключает `CoilHTable` и получает компонент, у которого все классы разрешаются в «нет стиля» — визуально компонент рендерится пустым или сломанным. Обнаружилось при ревью плана интеграции sandbox viewer'а.
 
 **Решение.** coil-ide экспортирует свою тему как отдельный CSS-файл через subpath `./theme.css`. Потребитель подключает его одной строкой из своего CSS.
 
@@ -391,7 +391,7 @@ Playground (`coil-ide/playground/`):
 2. `@theme inline { ... }` блок, маппящий `--color-*`, `--font-*`, `--radius-*` на переменные — то же содержание, что уже есть в `playground/index.css`.
 3. `@custom-variant dark (&:where(.dark, .dark *));` — чтобы потребитель мог активировать dark-палитру, поставив `className="dark"` на контейнер React root, не затрагивая остальную страницу.
 4. **НЕ содержит** `@import 'tailwindcss'` (tailwind подключается потребителем отдельно), `@layer base { body { ... } }` (playground-специфичный body-фон), никакой playground-специфичной вёрстки.
-5. Содержит `@source` директивы, указывающие Tailwind v4 JIT, где искать классы, используемые библиотечными компонентами: `@source '../components/**/*.tsx';` (sources относительно расположения `src/styles/theme.css`). После сборки библиотеки скриптом `prepare` файл копируется в `dist/theme.css`, а `@source` переписывается на `../chunks/*.js`, `../components/*.js` (или аналог — детали раскладки dist уточняет кодер; важно, что после сборки `@source` покрывает именно то, что реально ставится в `node_modules/coil-ide/dist`).
+5. Содержит `@source` директивы, указывающие Tailwind v4 JIT, где искать классы, используемые библиотечными компонентами: `@source '../components/**/*.tsx';` (sources относительно расположения `src/styles/theme.css`). После сборки библиотеки скриптом `prepare` файл копируется в `dist/theme.css`, а `@source` переписывается на `../chunks/*.js`, `../components/*.js` (или аналог — детали раскладки dist уточняются при реализации; важно, что после сборки `@source` покрывает именно то, что реально ставится в `node_modules/coil-ide/dist`).
 
 **Экспорт в `package.json`:**
 ```json
@@ -414,21 +414,21 @@ Playground (`coil-ide/playground/`):
 
 **Почему.**
 
-- *Концептуальная цельность.* Тема компонентов — неотъемлемая часть библиотеки, а не инфраструктуры приложения. Без темы компоненты не работают — значит тема должна ехать с ними. Сейчас тема живёт в playground из исторических причин (до STORY-015 не было внешних потребителей), это технический долг.
+- *Концептуальная цельность.* Тема компонентов — неотъемлемая часть библиотеки, а не инфраструктуры приложения. Без темы компоненты не работают — значит тема должна ехать с ними. Сейчас тема живёт в playground из исторических причин (до появления первого внешнего потребителя такой необходимости не было), это технический долг.
 - *Минимальная правка contract-surface.* Один новый subpath export, один импорт у потребителя, один рефакторинг playground'а. Никаких изменений в React API компонентов.
 - *Единый источник истины.* Playground и sandbox рендерят `CoilHTable` из одной палитры. Любое изменение темы в будущем — одна правка в `src/styles/theme.css`, оба потребителя получают обновление автоматически.
 - *Tailwind v4 `@source` механика снимает необходимость в config-файлах потребителя.* Потребителю не нужно знать путь до `node_modules/coil-ide/dist` и руками прописывать content paths — `@source` в самом theme.css делает это изнутри.
 
 **Цена.**
 
-- Нужна небольшая доработка build-пайплайна coil-ide, чтобы `src/styles/theme.css` попал в `dist/theme.css` с правильным `@source` путём. Варианты: (а) vite-плагин `copy`, (б) npm-скрипт `cp src/styles/theme.css dist/theme.css` в `build:lib`, (в) два разных файла — source-копия для playground dev (`@source '../components/**/*.tsx'`) и dist-копия для production (`@source './chunks/*.js'`). Рекомендую (б)+(в) на выбор кодера: проще всего держать два файла — `src/styles/theme.dev.css` (для playground `@import '../../src/styles/theme.dev.css'`) и `src/styles/theme.css` (для потребителей, с `@source` на `./**/*.js` — резолвится относительно финального места в `dist/`). Финальное решение — за кодером, главное что контракт subpath-экспорта соблюдён.
+- Нужна небольшая доработка build-пайплайна coil-ide, чтобы `src/styles/theme.css` попал в `dist/theme.css` с правильным `@source` путём. Варианты: (а) vite-плагин `copy`, (б) npm-скрипт `cp src/styles/theme.css dist/theme.css` в `build:lib`, (в) два разных файла — source-копия для playground dev (`@source '../components/**/*.tsx'`) и dist-копия для production (`@source './chunks/*.js'`). Рекомендуемый путь — (б)+(в): проще всего держать два файла — `src/styles/theme.dev.css` (для playground `@import '../../src/styles/theme.dev.css'`) и `src/styles/theme.css` (для потребителей, с `@source` на `./**/*.js` — резолвится относительно финального места в `dist/`). Финальное решение принимается при реализации, главное что контракт subpath-экспорта соблюдён.
 - Playground тоже трогаем — это риск визуальной регрессии. Mitigate: после правки playground `npm run dev` + визуальная проверка.
-- Фаза 5 sandbox блокируется до того момента, пока coil-ide не закоммитил и не запушил новую версию, sandbox `package.json` не подтянул обновлённый git ref. Фаундер коммитит, кодер обновляет ref; группа B sandbox'а начинается после этого.
+- Интеграция sandbox-потребителя блокируется до того момента, пока coil-ide не закоммитил и не запушил новую версию и sandbox `package.json` не подтянул обновлённый git ref.
 
 **Альтернативы, которые отвергнуты.**
 
 - *Дубликат темы в `coil-sandbox/src/web/viewer/viewer.css`.* Просто скопировать `:root`/`.dark`/`@theme inline` из `playground/index.css`. Минус: жёсткое дублирование, любое изменение палитры в coil-ide молча расходится с sandbox, никто не заметит до визуальной регрессии. Концептуально неверно — sandbox не должен знать внутренние токены библиотеки.
-- *Переписать компоненты coil-ide на инлайн-стили / CSS-модули.* Правильный архитектурный рефакторинг, но масштаб сильно больше — трогает каждый компонент, лишает Tailwind-утилит. Вне scope STORY-015.
+- *Переписать компоненты coil-ide на инлайн-стили / CSS-модули.* Правильный архитектурный рефакторинг, но масштаб сильно больше — трогает каждый компонент, лишает Tailwind-утилит. Вне scope этой задачи.
 - *Компонентная инициализация темы через JS (компонент сам инжектит `<style>` в `document.head`).* Работает, но ломает серверный рендеринг, конфликтует с Vite CSS-обработкой и делает невозможным статический анализ используемых классов. Отвергнуто.
 
 **Что должно остаться истинным после применения.**
