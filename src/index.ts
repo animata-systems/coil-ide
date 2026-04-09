@@ -11,6 +11,8 @@ export { PipelineProvider, usePipeline } from './components/PipelineProvider';
 export type { PipelineProviderProps } from './components/PipelineProvider';
 export { EditorView } from './components/EditorView';
 export type { EditorViewProps } from './components/EditorView';
+export { CoilHTable } from './components/CoilHTable';
+export type { CoilHTableProps } from './components/CoilHTable';
 
 // ── Monaco language support ────────────────────────────────
 export {
@@ -31,7 +33,12 @@ export {
 // ── Headless pipeline (also exported via ./headless) ───────
 export { dialectRegistry, DEFAULT_DIALECT } from './coil/dialects';
 export { astToCoilH } from './coil/coil-h';
-export type { CoilHRow } from './coil/coil-h';
+export type {
+  CoilHRow,
+  CoilHCell,
+  CoilHValue,
+  ResultFieldRow,
+} from './coil/coil-h';
 
 // ── Runtime re-exports for consumer convenience ────────────
 export {

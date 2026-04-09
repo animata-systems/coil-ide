@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import {
   usePipeline,
   dialectRegistry,
   DEFAULT_DIALECT,
   astToCoilH,
-  type CoilHRow,
+  CoilHTable,
 } from 'coil-ide';
 import { useExample } from './ExampleProvider';
 import { translateTemplate } from '../coil/template-translations';
@@ -86,19 +86,6 @@ export function ValidationPanel() {
 
 // ── COIL-H Panel ────────────────────────────────────────
 
-function translateBody(row: CoilHRow, exampleId: string, dialectName: string): string {
-  if (row.mode !== 'full' || row.templates.length === 0) return row.body;
-
-  let body = row.body;
-  for (const original of row.templates) {
-    const translated = translateTemplate(exampleId, original, dialectName);
-    if (translated !== original) {
-      body = body.replace(`<< ${original} >>`, `<< ${translated} >>`);
-    }
-  }
-  return body;
-}
-
 export function CoilHPanel() {
   const { ast, source, parseError } = usePipeline();
   const { activeExample } = useExample();
@@ -114,6 +101,14 @@ export function CoilHPanel() {
     if (!ast || !viewDialect) return null;
     return astToCoilH(ast, source, viewDialect);
   }, [ast, source, viewDialect]);
+
+  const renderTemplate = useCallback(
+    (text: string) => {
+      if (!activeExample) return text;
+      return translateTemplate(activeExample.id, text, coilHDialect);
+    },
+    [activeExample, coilHDialect],
+  );
 
   if (parseError) {
     return (
@@ -171,62 +166,7 @@ export function CoilHPanel() {
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto">
-        <div className="min-w-[400px]">
-          {/* Header */}
-          <div className="sticky top-0 grid grid-cols-[32px_80px_1fr_80px] gap-3 px-4 py-2 bg-ide-panel text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            <span>№</span>
-            <span>Оператор</span>
-            <span>Тело</span>
-            <span>Имя</span>
-          </div>
-
-          {/* Rows */}
-          <div className="divide-y divide-foreground/5">
-            {rows.map((row, i) => {
-              if (row.mode === 'divider') {
-                return (
-                  <div
-                    key={i}
-                    className="px-4 py-2 text-xs text-muted-foreground italic whitespace-pre-wrap bg-foreground/3"
-                  >
-                    {row.body}
-                  </div>
-                );
-              }
-
-              const operatorKeyword = row.operatorId && viewDialect.operators[row.operatorId as keyof typeof viewDialect.operators]
-                ? viewDialect.operators[row.operatorId as keyof typeof viewDialect.operators]
-                : row.operatorId;
-
-              const translatedBody = translateBody(row, activeExample!.id, coilHDialect);
-              const isDegraded = row.mode === 'degraded';
-
-              return (
-                <div
-                  key={i}
-                  className="grid grid-cols-[32px_80px_1fr_80px] gap-3 px-4 py-2.5 text-sm hover:bg-foreground/5 transition-colors"
-                >
-                  <span className="text-xs text-muted-foreground">
-                    {row.step?.join('.')}
-                  </span>
-                  <span>
-                    {operatorKeyword && (
-                      <span className="inline-block rounded-md px-2 py-0.5 text-xs font-medium bg-primary/15 text-primary">
-                        {operatorKeyword}
-                      </span>
-                    )}
-                  </span>
-                  <span className={`text-foreground/90 whitespace-pre-wrap break-words ${isDegraded ? 'font-mono text-[11px] text-muted-foreground' : ''}`}>
-                    {translatedBody}
-                  </span>
-                  <span className="font-mono text-xs text-muted-foreground truncate">
-                    {row.name}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <CoilHTable rows={rows} dialect={viewDialect} renderTemplate={renderTemplate} />
       </div>
     </div>
   );

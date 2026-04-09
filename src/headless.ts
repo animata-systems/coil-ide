@@ -5,7 +5,12 @@
 
 export { dialectRegistry, DEFAULT_DIALECT } from './coil/dialects';
 export { astToCoilH } from './coil/coil-h';
-export type { CoilHRow } from './coil/coil-h';
+export type {
+  CoilHRow,
+  CoilHCell,
+  CoilHValue,
+  ResultFieldRow,
+} from './coil/coil-h';
 
 export {
   tokenize,

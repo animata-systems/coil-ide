@@ -17,15 +17,42 @@ import type {
   CommentNode,
 } from 'coil-runtime/browser';
 
+// ── Structural cells (I-0005) ──────────────────────────────
+//
+// `CoilHRow.cells` replaces the previous `body: string`. Physical
+// template markers `<<>>` and modifier/value separation live in the
+// renderer, not in the data. Templates always carry the trimmed
+// plain-text form without `<<`/`>>`.
+
+export type CoilHValue =
+  | { kind: 'plain'; text: string }
+  | { kind: 'template'; text: string };
+
+export interface ResultFieldRow {
+  name: string;
+  type: string;
+  description: string;
+  depth: number;
+}
+
+export type CoilHCell =
+  | { kind: 'modifier'; label: string; value: CoilHValue }
+  | { kind: 'template'; text: string }
+  | { kind: 'result-block'; label: string; fields: ResultFieldRow[] }
+  | { kind: 'args-block'; args: { key: string; value: string }[] }
+  | { kind: 'text'; text: string };
+
 export interface CoilHRow {
   step: number[] | null;
   operatorId: string;
-  body: string;
+  cells: CoilHCell[];
   name: string;
   mode: 'full' | 'degraded' | 'divider';
   /** Original template texts for translation matching (full mode only) */
   templates: string[];
 }
+
+// ── Helpers ────────────────────────────────────────────────
 
 export function refToText(name: string, path: string[]): string {
   return `$${name}${path.length ? '.' + path.join('.') : ''}`;
@@ -37,9 +64,16 @@ export function templateToText(tpl: TemplateNode): string {
   ).join('');
 }
 
+/**
+ * Flat-text rendering of a non-template body value (ref / string / number).
+ * Templates are never passed through this — they become structural
+ * `CoilHValue.kind='template'` cells.
+ */
 export function bodyValueToText(body: BodyValue): string {
   switch (body.type) {
     case 'template':
+      // Kept for backward compatibility with the test of the same name;
+      // structural code paths never call this with a template.
       return `<< ${templateToText(body).trim()} >>`;
     case 'ref':
       return refToText(body.name, body.path);
@@ -50,49 +84,27 @@ export function bodyValueToText(body: BodyValue): string {
   }
 }
 
-function buildSendBody(node: SendNode, dialect: DialectTable): string {
-  const parts: string[] = [];
-
-  if (node.to) {
-    const channelText = node.to.segments.map(s =>
-      s.kind === 'literal' ? s.value : `$${s.name}`,
-    ).join('/');
-    parts.push(`${dialect.modifiers['Mod.To']} #${channelText}`);
-  }
-  if (node.for.length > 0) {
-    parts.push(`${dialect.modifiers['Mod.For']} ${node.for.map(n => `@${n}`).join(', ')}`);
-  }
-  if (node.replyTo) {
-    const replyText = node.replyTo.segments.map(s =>
-      s.kind === 'literal' ? s.value : `$${s.name}`,
-    ).join('/');
-    parts.push(`${dialect.modifiers['Mod.ReplyTo']} #${replyText}`);
-  }
-  if (node.await) {
-    const policyMap: Record<string, string> = {
-      none: dialect.policies['Pol.None'],
-      any: dialect.policies['Pol.Any'],
-      all: dialect.policies['Pol.All'],
-    };
-    parts.push(`${dialect.modifiers['Mod.Await']} ${policyMap[node.await] ?? node.await}`);
-  }
-  if (node.timeout) {
-    const suffix = (dialect.durationSuffixes as Record<string, string>)[node.timeout.unitId] ?? '';
-    parts.push(`${dialect.modifiers['Mod.Timeout']} ${node.timeout.value}${suffix}`);
-  }
-
-  if (node.body) {
-    const text = templateToText(node.body).trim();
-    if (text) parts.push(`<< ${text} >>`);
-  }
-
-  return parts.join('\n');
+function channelRefToText(ref: SendNode['to']): string {
+  if (!ref) return '';
+  return '#' + ref.segments.map(s =>
+    s.kind === 'literal' ? s.value : `$${s.name}`,
+  ).join('/');
 }
 
-function buildReceiveBody(node: ReceiveNode): string {
-  if (!node.prompt) return '';
-  const text = templateToText(node.prompt).trim();
-  return text ? `<< ${text} >>` : '';
+function plain(text: string): CoilHValue {
+  return { kind: 'plain', text };
+}
+
+function tplValue(text: string): CoilHValue {
+  return { kind: 'template', text };
+}
+
+function durationText(
+  timeout: { value: number; unitId: string },
+  dialect: DialectTable,
+): string {
+  const suffix = (dialect.durationSuffixes as Record<string, string>)[timeout.unitId] ?? '';
+  return `${timeout.value}${suffix}`;
 }
 
 function argValueToText(value: ArgEntry['value']): string {
@@ -106,121 +118,252 @@ function argValueToText(value: ArgEntry['value']): string {
   }
 }
 
-function buildResultBlock(fields: ResultField[], dialect: DialectTable): string {
-  const lines: string[] = [];
-  for (const f of fields) {
-    const indent = '  '.repeat(f.depth);
+function buildResultFields(fields: ResultField[], dialect: DialectTable): ResultFieldRow[] {
+  return fields.map(f => {
     let typeName = (dialect.resultTypes as Record<string, string>)[f.typeId] ?? f.typeId;
     if (f.typeArgs.length > 0) {
       typeName += `(${f.typeArgs.join(', ')})`;
     }
-    const desc = f.description ? ` — ${f.description}` : '';
-    lines.push(`${indent}* ${f.name}: ${typeName}${desc}`);
-  }
-  return lines.join('\n');
+    return {
+      name: f.name,
+      type: typeName,
+      description: f.description ?? '',
+      depth: f.depth,
+    };
+  });
 }
 
-function buildThinkBody(node: ThinkNode, dialect: DialectTable): string {
-  const parts: string[] = [];
+// ── Per-operator cell builders ─────────────────────────────
+
+function buildSendCells(node: SendNode, dialect: DialectTable): CoilHCell[] {
+  const cells: CoilHCell[] = [];
+
+  if (node.to) {
+    cells.push({
+      kind: 'modifier',
+      label: dialect.modifiers['Mod.To'],
+      value: plain(channelRefToText(node.to)),
+    });
+  }
+  if (node.for.length > 0) {
+    cells.push({
+      kind: 'modifier',
+      label: dialect.modifiers['Mod.For'],
+      value: plain(node.for.map(n => `@${n}`).join(', ')),
+    });
+  }
+  if (node.replyTo) {
+    cells.push({
+      kind: 'modifier',
+      label: dialect.modifiers['Mod.ReplyTo'],
+      value: plain(channelRefToText(node.replyTo)),
+    });
+  }
+  if (node.await) {
+    const policyMap: Record<string, string> = {
+      none: dialect.policies['Pol.None'],
+      any: dialect.policies['Pol.Any'],
+      all: dialect.policies['Pol.All'],
+    };
+    cells.push({
+      kind: 'modifier',
+      label: dialect.modifiers['Mod.Await'],
+      value: plain(policyMap[node.await] ?? node.await),
+    });
+  }
+  if (node.timeout) {
+    cells.push({
+      kind: 'modifier',
+      label: dialect.modifiers['Mod.Timeout'],
+      value: plain(durationText(node.timeout, dialect)),
+    });
+  }
+
+  if (node.body) {
+    const text = templateToText(node.body).trim();
+    if (text) cells.push({ kind: 'template', text });
+  }
+
+  return cells;
+}
+
+function buildReceiveCells(node: ReceiveNode): CoilHCell[] {
+  if (!node.prompt) return [];
+  const text = templateToText(node.prompt).trim();
+  return text ? [{ kind: 'template', text }] : [];
+}
+
+function buildThinkCells(node: ThinkNode, dialect: DialectTable): CoilHCell[] {
+  const cells: CoilHCell[] = [];
 
   // 1. Оснащение: ЧЕРЕЗ, КАК, ИСПОЛЬЗУЯ (I-0003)
   if (node.via) {
-    parts.push(`${dialect.modifiers['Mod.Via']} ${refToText(node.via.name, node.via.path)}`);
+    cells.push({
+      kind: 'modifier',
+      label: dialect.modifiers['Mod.Via'],
+      value: plain(refToText(node.via.name, node.via.path)),
+    });
   }
   if (node.as.length > 0) {
-    parts.push(`${dialect.modifiers['Mod.As']} ${node.as.map(a => refToText(a.name, a.path)).join(', ')}`);
+    cells.push({
+      kind: 'modifier',
+      label: dialect.modifiers['Mod.As'],
+      value: plain(node.as.map(a => refToText(a.name, a.path)).join(', ')),
+    });
   }
   if (node.using.length > 0) {
-    parts.push(`${dialect.modifiers['Mod.Using']} ${node.using.map(t => `!${t.name}`).join(', ')}`);
+    cells.push({
+      kind: 'modifier',
+      label: dialect.modifiers['Mod.Using'],
+      value: plain(node.using.map(t => `!${t.name}`).join(', ')),
+    });
   }
 
-  // 2. Постановка: ЦЕЛЬ, ВХОД, КОНТЕКСТ
+  // 2. Постановка: ЦЕЛЬ, ВХОД, КОНТЕКСТ — модификаторы с template-значением
   if (node.goal) {
     const text = templateToText(node.goal).trim();
-    if (text) parts.push(`${dialect.modifiers['Mod.Goal']} << ${text} >>`);
+    if (text) {
+      cells.push({
+        kind: 'modifier',
+        label: dialect.modifiers['Mod.Goal'],
+        value: tplValue(text),
+      });
+    }
   }
   if (node.input) {
     const text = templateToText(node.input).trim();
-    if (text) parts.push(`${dialect.modifiers['Mod.Input']} << ${text} >>`);
+    if (text) {
+      cells.push({
+        kind: 'modifier',
+        label: dialect.modifiers['Mod.Input'],
+        value: tplValue(text),
+      });
+    }
   }
   if (node.context) {
     const text = templateToText(node.context).trim();
-    if (text) parts.push(`${dialect.modifiers['Mod.Context']} << ${text} >>`);
+    if (text) {
+      cells.push({
+        kind: 'modifier',
+        label: dialect.modifiers['Mod.Context'],
+        value: tplValue(text),
+      });
+    }
   }
 
-  // 3. РЕЗУЛЬТАТ (pre-блок)
+  // 3. РЕЗУЛЬТАТ — самостоятельный structural block
   if (node.result.length > 0) {
-    const block = buildResultBlock(node.result, dialect);
-    parts.push(`${dialect.modifiers['Mod.Result']}\n${block}`);
+    cells.push({
+      kind: 'result-block',
+      label: dialect.modifiers['Mod.Result'],
+      fields: buildResultFields(node.result, dialect),
+    });
   }
 
-  // 4. Анонимное тело (D-0032)
+  // 4. Анонимное тело (D-0032) — template-ячейка
   if (node.body) {
     const text = templateToText(node.body).trim();
-    if (text) parts.push(`<< ${text} >>`);
+    if (text) cells.push({ kind: 'template', text });
   }
 
-  return parts.join('\n');
+  return cells;
 }
 
-function buildExecuteBody(node: ExecuteNode, dialect: DialectTable): string {
-  const parts: string[] = [];
-  parts.push(`${dialect.modifiers['Mod.Using']} !${node.tool.name}`);
-  for (const arg of node.args) {
-    parts.push(`- ${arg.key}: ${argValueToText(arg.value)}`);
+function buildExecuteCells(node: ExecuteNode, dialect: DialectTable): CoilHCell[] {
+  const cells: CoilHCell[] = [];
+  cells.push({
+    kind: 'modifier',
+    label: dialect.modifiers['Mod.Using'],
+    value: plain(`!${node.tool.name}`),
+  });
+  if (node.args.length > 0) {
+    cells.push({
+      kind: 'args-block',
+      args: node.args.map(a => ({ key: a.key, value: argValueToText(a.value) })),
+    });
   }
-  return parts.join('\n');
+  return cells;
 }
 
-function buildWaitBody(node: WaitNode, dialect: DialectTable): string {
-  const parts: string[] = [];
-  parts.push(`${dialect.modifiers['Mod.On']} ${node.on.map(p => `?${p.name}`).join(', ')}`);
+function buildWaitCells(node: WaitNode, dialect: DialectTable): CoilHCell[] {
+  const cells: CoilHCell[] = [];
+  cells.push({
+    kind: 'modifier',
+    label: dialect.modifiers['Mod.On'],
+    value: plain(node.on.map(p => `?${p.name}`).join(', ')),
+  });
   if (node.mode) {
     const policyMap: Record<string, string> = {
       any: dialect.policies['Pol.Any'],
       all: dialect.policies['Pol.All'],
     };
-    parts.push(`${dialect.modifiers['Mod.Mode']} ${policyMap[node.mode] ?? node.mode}`);
+    cells.push({
+      kind: 'modifier',
+      label: dialect.modifiers['Mod.Mode'],
+      value: plain(policyMap[node.mode] ?? node.mode),
+    });
   }
   if (node.timeout) {
-    const suffix = (dialect.durationSuffixes as Record<string, string>)[node.timeout.unitId] ?? '';
-    parts.push(`${dialect.modifiers['Mod.Timeout']} ${node.timeout.value}${suffix}`);
+    cells.push({
+      kind: 'modifier',
+      label: dialect.modifiers['Mod.Timeout'],
+      value: plain(durationText(node.timeout, dialect)),
+    });
   }
-  return parts.join('\n');
+  return cells;
 }
 
-function extractDegradedBody(source: string, span: { offset: number; length: number }, dialect: DialectTable): string {
+function extractDegradedBody(
+  source: string,
+  span: { offset: number; length: number },
+  dialect: DialectTable,
+): string {
   const raw = source.slice(span.offset, span.offset + span.length);
   const lines = raw.split('\n');
-
-  // Remove first line (operator keyword)
   lines.shift();
-
-  // Remove last line if it's END
   const endKeyword = dialect.terminators['Kw.End'];
   if (lines.length > 0 && lines[lines.length - 1].trim() === endKeyword) {
     lines.pop();
   }
-
   return lines.join('\n').trim();
 }
 
-function buildIfBody(node: IfNode): string {
-  return node.condition;
+function buildIfCells(node: IfNode): CoilHCell[] {
+  return [{ kind: 'text', text: node.condition }];
 }
 
-function buildRepeatBody(node: RepeatNode, dialect: DialectTable): string {
-  const parts: string[] = [];
+function buildRepeatCells(node: RepeatNode, dialect: DialectTable): CoilHCell[] {
+  const cells: CoilHCell[] = [];
   if (node.until) {
-    parts.push(`${dialect.modifiers['Mod.Until']} ${node.until}`);
+    cells.push({
+      kind: 'modifier',
+      label: dialect.modifiers['Mod.Until'],
+      value: plain(node.until),
+    });
   }
-  parts.push(`${dialect.modifiers['Mod.Limit']} ${node.limit}`);
-  return parts.join(' ');
+  cells.push({
+    kind: 'modifier',
+    label: dialect.modifiers['Mod.Limit'],
+    value: plain(String(node.limit)),
+  });
+  return cells;
 }
 
-function buildEachBody(node: EachNode, dialect: DialectTable): string {
-  return `${refToText(node.element.name, node.element.path)} ${dialect.modifiers['Mod.From']} ${refToText(node.from.name, node.from.path)}`;
+function buildEachCells(node: EachNode, dialect: DialectTable): CoilHCell[] {
+  return [
+    {
+      kind: 'text',
+      text: refToText(node.element.name, node.element.path),
+    },
+    {
+      kind: 'modifier',
+      label: dialect.modifiers['Mod.From'],
+      value: plain(refToText(node.from.name, node.from.path)),
+    },
+  ];
 }
+
+// ── AST walker ─────────────────────────────────────────────
 
 function convertNodes(
   nodes: (OperatorNode | CommentNode)[],
@@ -233,19 +376,14 @@ function convertNodes(
 
   for (const node of nodes) {
     if (node.kind === 'Comment') {
-      const prev = rows[rows.length - 1];
-      if (prev && prev.mode === 'divider') {
-        prev.body += '\n' + node.text;
-      } else {
-        rows.push({
-          step: null,
-          operatorId: '',
-          body: node.text,
-          name: '',
-          mode: 'divider',
-          templates: [],
-        });
-      }
+      rows.push({
+        step: null,
+        operatorId: '',
+        cells: [{ kind: 'text', text: node.text }],
+        name: '',
+        mode: 'divider',
+        templates: [],
+      });
       continue;
     }
 
@@ -259,7 +397,7 @@ function convertNodes(
         rows.push({
           step,
           operatorId: 'Op.Receive',
-          body: buildReceiveBody(node),
+          cells: buildReceiveCells(node),
           name: node.name,
           mode: 'full',
           templates,
@@ -272,7 +410,7 @@ function convertNodes(
         rows.push({
           step,
           operatorId: 'Op.Send',
-          body: buildSendBody(node, dialect),
+          cells: buildSendCells(node, dialect),
           name: node.name ?? '',
           mode: 'full',
           templates,
@@ -283,7 +421,7 @@ function convertNodes(
         rows.push({
           step,
           operatorId: 'Op.Exit',
-          body: '',
+          cells: [],
           name: '',
           mode: 'full',
           templates: [],
@@ -294,7 +432,7 @@ function convertNodes(
         rows.push({
           step,
           operatorId: 'Op.Actors',
-          body: node.names.join(', '),
+          cells: [{ kind: 'text', text: node.names.join(', ') }],
           name: '',
           mode: 'full',
           templates: [],
@@ -305,7 +443,7 @@ function convertNodes(
         rows.push({
           step,
           operatorId: 'Op.Tools',
-          body: node.names.join(', '),
+          cells: [{ kind: 'text', text: node.names.join(', ') }],
           name: '',
           mode: 'full',
           templates: [],
@@ -314,13 +452,18 @@ function convertNodes(
       }
       case 'Op.Define': {
         const templates: string[] = [];
+        const cells: CoilHCell[] = [];
         if (node.body.type === 'template') {
-          templates.push(templateToText(node.body).trim());
+          const text = templateToText(node.body).trim();
+          templates.push(text);
+          cells.push({ kind: 'template', text });
+        } else {
+          cells.push({ kind: 'text', text: bodyValueToText(node.body) });
         }
         rows.push({
           step,
           operatorId: 'Op.Define',
-          body: bodyValueToText(node.body),
+          cells,
           name: `$${node.name}`,
           mode: 'full',
           templates,
@@ -329,13 +472,18 @@ function convertNodes(
       }
       case 'Op.Set': {
         const templates: string[] = [];
+        const cells: CoilHCell[] = [];
         if (node.body.type === 'template') {
-          templates.push(templateToText(node.body).trim());
+          const text = templateToText(node.body).trim();
+          templates.push(text);
+          cells.push({ kind: 'template', text });
+        } else {
+          cells.push({ kind: 'text', text: bodyValueToText(node.body) });
         }
         rows.push({
           step,
           operatorId: 'Op.Set',
-          body: bodyValueToText(node.body),
+          cells,
           name: refToText(node.target.name, node.target.path),
           mode: 'full',
           templates,
@@ -351,7 +499,7 @@ function convertNodes(
         rows.push({
           step,
           operatorId: 'Op.Think',
-          body: buildThinkBody(node, dialect),
+          cells: buildThinkCells(node, dialect),
           name: `$${node.name}`,
           mode: 'full',
           templates,
@@ -362,7 +510,7 @@ function convertNodes(
         rows.push({
           step,
           operatorId: 'Op.Execute',
-          body: buildExecuteBody(node, dialect),
+          cells: buildExecuteCells(node, dialect),
           name: `$${node.name}`,
           mode: 'full',
           templates: [],
@@ -373,7 +521,7 @@ function convertNodes(
         rows.push({
           step,
           operatorId: 'Op.Wait',
-          body: buildWaitBody(node, dialect),
+          cells: buildWaitCells(node, dialect),
           name: '',
           mode: 'full',
           templates: [],
@@ -383,11 +531,15 @@ function convertNodes(
       case 'Op.Signal': {
         const bodyText = templateToText(node.body).trim();
         const templates: string[] = [];
-        if (bodyText) templates.push(bodyText);
+        const cells: CoilHCell[] = [];
+        if (bodyText) {
+          templates.push(bodyText);
+          cells.push({ kind: 'template', text: bodyText });
+        }
         rows.push({
           step,
           operatorId: 'Op.Signal',
-          body: bodyText ? `<< ${bodyText} >>` : '',
+          cells,
           name: `~${node.target.name}`,
           mode: 'full',
           templates,
@@ -398,7 +550,7 @@ function convertNodes(
         rows.push({
           step,
           operatorId: 'Op.If',
-          body: buildIfBody(node),
+          cells: buildIfCells(node),
           name: '',
           mode: 'full',
           templates: [],
@@ -410,7 +562,7 @@ function convertNodes(
         rows.push({
           step,
           operatorId: 'Op.Repeat',
-          body: buildRepeatBody(node, dialect),
+          cells: buildRepeatCells(node, dialect),
           name: '',
           mode: 'full',
           templates: [],
@@ -422,7 +574,7 @@ function convertNodes(
         rows.push({
           step,
           operatorId: 'Op.Each',
-          body: buildEachBody(node, dialect),
+          cells: buildEachCells(node, dialect),
           name: '',
           mode: 'full',
           templates: [],
@@ -434,7 +586,7 @@ function convertNodes(
         rows.push({
           step,
           operatorId: node.operatorId,
-          body: extractDegradedBody(source, node.span, dialect),
+          cells: [{ kind: 'text', text: extractDegradedBody(source, node.span, dialect) }],
           name: '',
           mode: 'degraded',
           templates: [],

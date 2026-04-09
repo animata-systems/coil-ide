@@ -133,3 +133,32 @@ describe('Phase 2 examples — no degraded rows', () => {
     expect(nested.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * I-0005 invariant: physical template markers `<<`/`>>` must never
+ * leak into structural template cells. The renderer owns those markers
+ * visually — data carries trimmed plain text.
+ */
+describe('I-0005 invariant — no <<>> in template cells', () => {
+  const allExamples = [...phase1Examples, ...phase2Examples];
+  for (const { file, dialect: dialectName } of allExamples) {
+    it(`${file} has no <<>> in any template cell or modifier[template] value`, () => {
+      const source = readExample(file);
+      const dialect = dialects[dialectName];
+      const rows = parseAndMap(source, dialect);
+
+      for (const row of rows) {
+        for (const cell of row.cells) {
+          if (cell.kind === 'template') {
+            expect(cell.text, `${file} row step=${row.step?.join('.')}`).not.toContain('<<');
+            expect(cell.text).not.toContain('>>');
+          }
+          if (cell.kind === 'modifier' && cell.value.kind === 'template') {
+            expect(cell.value.text, `${file} row step=${row.step?.join('.')} mod=${cell.label}`).not.toContain('<<');
+            expect(cell.value.text).not.toContain('>>');
+          }
+        }
+      }
+    });
+  }
+});
