@@ -80,7 +80,10 @@ out
 
 # Nuxt.js build / generate output
 .nuxt
-dist
+
+# coil-ide build outputs
+dist/
+dist-playground/
 
 # Gatsby files
 .cache/

@@ -20,8 +20,6 @@ import {
   type Token,
   type ValidationDiagnostic,
 } from 'coil-runtime/browser';
-import { useExample } from './ExampleProvider';
-import { dialectRegistry, DEFAULT_DIALECT } from '../coil/dialects';
 
 interface PipelineState {
   source: string;
@@ -63,67 +61,69 @@ function runPipeline(source: string, index: KeywordIndex, dialect: DialectTable)
   }
 }
 
-export function PipelineProvider({ children }: { children: ReactNode }) {
-  const { activeExample } = useExample();
+export interface PipelineProviderProps {
+  /** External source of truth for editor contents. */
+  source: string;
+  /** Dialect to parse/validate against. */
+  dialect: DialectTable;
+  /** Debounce delay for user-driven updates (ms). Default 300. */
+  debounceMs?: number;
+  children: ReactNode;
+}
+
+/**
+ * Library-level provider. Runs tokenize→parse→validate and exposes the
+ * result via `usePipeline()`. Controlled by `source` + `dialect` props; the
+ * owner decides where source and dialect come from.
+ */
+export function PipelineProvider({ source, dialect, debounceMs = 300, children }: PipelineProviderProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const indexCacheRef = useRef<{ name: string; index: KeywordIndex } | null>(null);
 
-  const getDialect = useCallback((): DialectTable => {
-    const dialectKey = activeExample?.dialect ?? DEFAULT_DIALECT;
-    const d = dialectRegistry.get(dialectKey);
-    if (!d) throw new Error(`Unknown dialect: ${dialectKey}`);
-    return d;
-  }, [activeExample?.dialect]);
-
-  const getIndex = useCallback((dialect: DialectTable): KeywordIndex => {
+  const getIndex = useCallback((d: DialectTable): KeywordIndex => {
     const cached = indexCacheRef.current;
-    if (cached && cached.name === dialect.name) return cached.index;
-    const index = KeywordIndex.build(dialect);
-    indexCacheRef.current = { name: dialect.name, index };
+    if (cached && cached.name === d.name) return cached.index;
+    const index = KeywordIndex.build(d);
+    indexCacheRef.current = { name: d.name, index };
     return index;
   }, []);
 
   const [state, setState] = useState<PipelineState>(() => {
-    if (!activeExample) {
-      const dialect = dialectRegistry.get(DEFAULT_DIALECT)!;
-      return { source: '', dialect, tokens: null, ast: null, diagnostics: [], parseError: null };
-    }
-    const dialect = getDialect();
     const index = getIndex(dialect);
-    return { ...runPipeline(activeExample.content, index, dialect), dialect };
+    return { ...runPipeline(source, index, dialect), dialect };
   });
 
-  // Immediate pipeline on example change
+  // External source/dialect change: reset internal state immediately,
+  // cancelling any pending debounced pipeline run.
   useEffect(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
-    if (!activeExample) {
-      setState(prev => ({ ...prev, source: '', tokens: null, ast: null, diagnostics: [], parseError: null }));
-      return;
-    }
-    const dialect = getDialect();
     const index = getIndex(dialect);
-    setState({ ...runPipeline(activeExample.content, index, dialect), dialect });
-  }, [activeExample, getDialect, getIndex]);
+    setState({ ...runPipeline(source, index, dialect), dialect });
+  }, [source, dialect, getIndex]);
 
-  // M-2: skip debounce if source unchanged (e.g. editor.setValue from example switch)
+  // User edits: debounce, then re-run pipeline locally. The external prop
+  // `source` is not touched here — the owner decides whether to mirror it
+  // back via onChange.
+  //
+  // Side effects (clearTimeout/setTimeout) live *outside* the setState
+  // updater so React's Strict Mode double-invocation does not schedule two
+  // debounced runs.
   const updateSource = useCallback((newSource: string) => {
-    setState(prev => {
-      if (newSource === prev.source) return prev;
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        const dialect = getDialect();
-        const index = getIndex(dialect);
-        setState({ ...runPipeline(newSource, index, dialect), dialect });
-      }, 300);
-      return prev;
-    });
-  }, [getDialect, getIndex]);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setState(current => {
+        const index = getIndex(current.dialect);
+        return { ...runPipeline(newSource, index, current.dialect), dialect: current.dialect };
+      });
+    }, debounceMs);
+    setState(prev => (newSource === prev.source ? prev : { ...prev, source: newSource }));
+  }, [getIndex, debounceMs]);
 
-  // L-1: cleanup debounce on unmount
+  // Cleanup debounce on unmount
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);

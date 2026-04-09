@@ -1,5 +1,5 @@
 import { AlertCircle, AlertTriangle, Check } from 'lucide-react';
-import { usePipeline } from './PipelineProvider';
+import { usePipeline } from 'coil-ide';
 import { useExample } from './ExampleProvider';
 
 export function StatusBar() {

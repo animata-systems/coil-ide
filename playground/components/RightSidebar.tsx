@@ -1,9 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { AlertCircle, AlertTriangle, Info } from 'lucide-react';
-import { usePipeline } from './PipelineProvider';
+import {
+  usePipeline,
+  dialectRegistry,
+  DEFAULT_DIALECT,
+  astToCoilH,
+  type CoilHRow,
+} from 'coil-ide';
 import { useExample } from './ExampleProvider';
-import { dialectRegistry, DEFAULT_DIALECT } from '../coil/dialects';
-import { astToCoilH, type CoilHRow } from '../coil/coil-h';
 import { translateTemplate } from '../coil/template-translations';
 
 // ── Validation Panel ────────────────────────────────────

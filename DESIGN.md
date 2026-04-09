@@ -275,3 +275,95 @@ Sandbox подключает пакет coil-ide как git-зависимост
 - В sandbox появляется второй билд-путь (Vite для viewer поверх tsc для сервера). Новый npm-скрипт, новые devDeps (`vite`, `@vitejs/plugin-react`, `tailwindcss` если viewer тянет стили из пакета).
 - Размер бандла. Monaco — тяжёлый. Mitigate: ленивая загрузка viewer'а только когда пользователь открыл панель агента.
 - Дисциплина: ничего не должно попадать из vanilla-страницы в React-бандл и обратно, кроме согласованного протокола событий.
+
+---
+
+## I-0007 — Граница библиотека ↔ playground: ядро на props, playground-обёртки на контекстах
+
+| | |
+|---|---|
+| **Статус** | принят как направление |
+| **Решено** | 2026-04-09 |
+| **Scope** | coil-ide/src/components/EditorPanel.tsx, coil-ide/src/components/PipelineProvider.tsx, coil-ide/playground/components/** |
+| **Связан с** | STORY-015 фаза 2, I-0004, I-0006, S-0001 |
+
+**Контекст.** I-0004 декларирует, что `EditorPanel` и `PipelineProvider` попадают в библиотеку (`src/`), а `ThemeProvider`, `ExampleProvider`, `EditorTabs`, `EmptyEditor` — в playground (`playground/`). Текущая реализация этому противоречит:
+
+- `src/components/EditorPanel.tsx:4-11` импортирует `useTheme`, `useExample`, `EditorTabs`, `EmptyEditor` — четыре playground-сущности.
+- `src/components/PipelineProvider.tsx:23` импортирует `useExample` и читает `activeExample.content` / `activeExample.dialect` для автопереключения pipeline на смену примера.
+
+Если физически переложить файлы по I-0004 без правок формы компонентов, библиотека начнёт импортировать из `../playground/`. Это (1) инверсия зависимости, (2) ломает `exports` пакета, (3) делает невозможным потребление библиотеки из sandbox (I-0006, S-0001), потому что sandbox не имеет `ExampleProvider` / `ThemeProvider` и не будет их заводить.
+
+Дополнительное требование из I-0006: sandbox показывает код агента read-only, получает source готовой строкой через socket-событие. Ему не нужен дебаунс-pipeline, подписка на редактор и reveal-диагностик — нужен только один прогон `runPipeline` для получения `ast` → `CoilHTable` и Monaco в режиме read-only.
+
+**Решение.** Расщепить `EditorPanel` и `PipelineProvider` по паттерну «ядро в библиотеке принимает данные через props → тонкая playground-обёртка снабжает props из playground-контекстов»:
+
+1. **`EditorView` (библиотека, новый компонент).** Чистый Monaco-редактор. Props:
+   ```ts
+   interface EditorViewProps {
+     value: string;
+     onChange?: (value: string) => void;
+     readOnly?: boolean;
+     dialect: DialectTable;
+     theme: 'light' | 'dark';
+     diagnostics?: ValidationDiagnostic[];
+     onMount?: (editor: editor.IStandaloneCodeEditor, monaco: Monaco) => void;
+   }
+   ```
+   Знает только: как настроить Monaco, как применить тему, как сконвертировать диагностики в markers, как переключить language при смене `dialect`. Не знает ни о вкладках, ни о примерах, ни о `PipelineProvider`.
+
+2. **`EditorPanel` (playground, переезжает из `src/`).** Тонкая обёртка над `EditorView`. Читает `useTheme`, `useExample`, `usePipeline`. Рендерит `<EditorTabs />`, если есть открытые вкладки, иначе `<EmptyEditor />`. Передаёт `value={activeExample.content}`, `dialect=...`, `theme=resolvedTheme`, `diagnostics={pipeline.diagnostics}`, `onChange={pipeline.updateSource}`, `onMount={(ed) => pipeline.registerEditor(ed)}` в `EditorView`.
+
+3. **`PipelineProvider` (библиотека, форма меняется).** Контекст-провайдер с core-логикой tokenize→parse→validate + debounce + registerEditor/revealDiagnostic. Больше не импортирует `useExample`. Новый API:
+   ```ts
+   interface PipelineProviderProps {
+     source: string;
+     dialect: DialectTable;
+     debounceMs?: number;
+     children: ReactNode;
+   }
+   ```
+   Внутри: state инициализируется из `runPipeline(source, index, dialect)`, `useEffect` на `[source, dialect]` триггерит повторный прогон (дебаунсом). `updateSource` из `usePipeline()` остаётся для случая, когда контроллер находится внутри провайдера (playground-редактор) — он вызывает debounced-прогон и локально меняет state.
+
+   Тонкость: «контролируемый `source` через props» + «внутренний state, меняемый через `updateSource`» — не конфликтуют, если договориться, что prop `source` задаёт **базовый** источник (например, содержимое активного примера), а `updateSource` делает локальные правки поверх. На смену `source` prop провайдер сбрасывает внутреннее значение на новое. Это ровно та модель, что работает сейчас в `useEffect([activeExample])`, только управление владельцем вынесено наружу.
+
+4. **`PlaygroundPipelineBridge` (playground, новый, тонкий).** Читает `useExample`, рендерит `<PipelineProvider source={activeExample?.content ?? ''} dialect={...}>{children}</PipelineProvider>`. Единственный файл, который связывает playground-специфичное состояние примеров с библиотечным pipeline.
+
+5. **Headless-путь для sandbox.** Sandbox **не использует** `PipelineProvider`. Вместо этого — чистый вызов `runPipeline(source, index, dialect)` из `coil-ide/headless` (один раз на загрузку агента), результат хранится в локальном state React-«острова». `CoilHTable` получает `rows` как prop. `EditorView` получает `value`, `readOnly=true`, `dialect`, `theme` — без `onChange`, без `onMount`, без diagnostics.
+
+**Раскладка после расщепления (уточнение к I-0004).**
+
+Библиотека (`coil-ide/src/`):
+- `components/EditorView.tsx` (новый)
+- `components/PipelineProvider.tsx` (переписан, props-based)
+- `components/CoilHTable.tsx` (извлечь из `RightSidebar.tsx` в Фазе 3)
+- `coil/*.ts` — pipeline utilities, coil-h, dialects, monarch, languages, themes, monaco-utils
+- `index.ts`, `headless.ts` — публичные entry points
+
+Playground (`coil-ide/playground/`):
+- `components/EditorPanel.tsx` (обёртка над `EditorView`)
+- `components/PlaygroundPipelineBridge.tsx` (новый)
+- `components/Layout.tsx`, `Header.tsx`, `LeftSidebar.tsx`, `LeftToolbar.tsx`, `RightSidebar.tsx`, `RightToolbar.tsx`, `StatusBar.tsx`, `EditorTabs.tsx`, `NewFileDialog.tsx`, `EmptyEditor.tsx`
+- `components/ExampleProvider.tsx`, `ThemeProvider.tsx`
+- `components/ValidationPanel.tsx`, `CoilHPanel.tsx` (остаются в playground как обёртки над библиотечными компонентами)
+- `coil/examples.ts`, `template-translations.ts`
+- `App.tsx`, `main.tsx`, `index.html`
+
+**Почему.**
+- Единственный вариант, который одновременно удовлетворяет I-0004 («библиотека переиспользуема вне playground»), I-0006 / S-0001 (sandbox рендерит компоненты, не тащит playground-контексты) и не переписывает playground заново.
+- Паттерн «ядро на props + тонкий bridge-компонент» стандартен для библиотечных React-компонентов и легко читаемый.
+- Sandbox получает максимально простой контракт: `value` строкой, `dialect` объектом, `readOnly=true` — никакого жизненного цикла pipeline.
+- Core-логика pipeline перестаёт знать про «примеры» — это чище концептуально: «пример» — playground-понятие, pipeline про него знать не должен.
+
+**Цена.**
+- Два новых файла в Фазе 2: `EditorView.tsx` (библиотека) и `PlaygroundPipelineBridge.tsx` (playground).
+- `PipelineProvider` переписывается: уходит `useExample`, появляется пара props `source` + `dialect`. Существующее поведение сохраняется, но это всё же переписывание public API провайдера.
+- `EditorPanel` переписывается как тонкая обёртка. Старый effect на `activeExample` превращается в передачу `value` в `EditorView`, логика `setModelLanguage` переезжает внутрь `EditorView`.
+- Визуальная регрессия playground — основной риск. Mitigate: визуальная проверка после перекладки, до расщепления `CoilHPanel` (Фаза 3).
+
+**Что НЕ меняется.**
+- Раскладка файлов, `exports`, peerDeps, vite-конфиги — по I-0004 без изменений.
+- Тесты `coil-h*.test.ts` — они не зависят от React-компонентов.
+- Поведение pipeline: те же tokenize→parse→validate, тот же debounce, тот же revealDiagnostic.
+
+**Уточнение (2026-04-09, по итогам Фазы 2 ревью).** Контракт `EditorView.dialect` сужен со `DialectTable` до `string`. Компонент использует диалект только как ключ для `ensureLanguage(key, monaco)` и `setModelLanguage(model, languageId(key))` — ни то, ни другое не нуждается в полной таблице. Выгоды: (а) потребитель передаёт просто `"ru-standard"` вместо импорта `dialectRegistry` ради одного prop'а, что критично для sandbox-остров (I-0006, S-0001); (б) контракт концептуально честнее — «имя языка для Monaco» ≠ «таблица диалекта для парсера». Цена: `EditorView` опосредованно зависит от глобального `dialectRegistry` (внутри `ensureLanguage`); расширение до кастомных диалектов, зарегистрированных потребителем, потребует либо опционального `dialectTable?: DialectTable` prop'а, либо явного параметра на `ensureLanguage`. Отложено как задача на момент, когда кастомные диалекты появятся вне библиотеки.

@@ -1,26 +1,46 @@
 {
   "name": "coil-ide",
-  "private": true,
   "version": "0.0.0",
   "type": "module",
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./headless": {
+      "types": "./dist/headless.d.ts",
+      "import": "./dist/headless.js"
+    }
+  },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "prepare": "npm run build:lib",
+    "build": "npm run build:lib && npm run build:playground",
+    "build:lib": "vite build -c vite.lib.config.ts && tsc -p tsconfig.lib.build.json",
+    "build:playground": "vite build",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "monaco-editor": ">=0.25.0 <1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
     "coil": "github:animata-systems/coil",
-    "coil-runtime": "github:animata-systems/coil-runtime",
-    "lucide-react": "^1.7.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "coil-runtime": "github:animata-systems/coil-runtime"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@monaco-editor/react": "^4.7.0",
     "@tailwindcss/vite": "^4.0.0",
     "@types/node": "^24.12.0",
     "@types/react": "^19.2.14",
@@ -30,6 +50,9 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
+    "lucide-react": "^1.7.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "tailwindcss": "^4.0.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.57.0",

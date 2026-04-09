@@ -1,15 +1,15 @@
 import { ThemeProvider } from './components/ThemeProvider';
 import { ExampleProvider } from './components/ExampleProvider';
-import { PipelineProvider } from './components/PipelineProvider';
+import { PlaygroundPipelineBridge } from './components/PlaygroundPipelineBridge';
 import { Layout } from './components/Layout';
 
 export function App() {
   return (
     <ThemeProvider>
       <ExampleProvider>
-        <PipelineProvider>
+        <PlaygroundPipelineBridge>
           <Layout />
-        </PipelineProvider>
+        </PlaygroundPipelineBridge>
       </ExampleProvider>
     </ThemeProvider>
   );
