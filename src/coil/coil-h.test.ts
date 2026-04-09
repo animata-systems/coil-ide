@@ -689,7 +689,7 @@ describe('mixed operators', () => {
     expect(r[1].operatorId).toBe('Op.Exit');
   });
 
-  it('blank line between comments starts a new divider row', () => {
+  it('blank line between comments does not break the merge chain', () => {
     const src = [
       "' first block line 1",
       "' first block line 2",
