@@ -376,6 +376,17 @@ function convertNodes(
 
   for (const node of nodes) {
     if (node.kind === 'Comment') {
+      // Merge consecutive comments into one divider block so that a
+      // multi-line comment header renders as a single row, not a row per
+      // physical line.
+      const prev = rows[rows.length - 1];
+      if (prev && prev.mode === 'divider') {
+        const firstCell = prev.cells[0];
+        if (firstCell && firstCell.kind === 'text') {
+          prev.cells = [{ kind: 'text', text: firstCell.text + '\n' + node.text }];
+          continue;
+        }
+      }
       rows.push({
         step: null,
         operatorId: '',

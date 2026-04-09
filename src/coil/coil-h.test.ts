@@ -669,6 +669,72 @@ describe('mixed operators', () => {
     expect(r[3].step).toEqual([3]);
     expect(r[3].operatorId).toBe('Op.Exit');
   });
+
+  it('merges consecutive comment lines into a single divider row', () => {
+    const src = [
+      "' @example demo",
+      "' @status stable",
+      "' @description Hello World — multi-line header",
+      "EXIT",
+    ].join('\n');
+    const r = rows(src, en);
+    expect(r).toHaveLength(2);
+    expect(r[0].mode).toBe('divider');
+    expect(r[0].cells).toHaveLength(1);
+    expect(r[0].cells[0]).toEqual({
+      kind: 'text',
+      text: '@example demo\n@status stable\n@description Hello World — multi-line header',
+    });
+    expect(r[1].step).toEqual([1]);
+    expect(r[1].operatorId).toBe('Op.Exit');
+  });
+
+  it('blank line between comments starts a new divider row', () => {
+    const src = [
+      "' first block line 1",
+      "' first block line 2",
+      "",
+      "' second block",
+      "EXIT",
+    ].join('\n');
+    const r = rows(src, en);
+    const dividers = r.filter(row => row.mode === 'divider');
+    // Blank lines do not produce comment nodes, but they also don't break
+    // the divider chain — subsequent comments still merge into the same
+    // block since the previous row is still a divider. This matches the
+    // pre-5c5d8a0 behaviour: an operator (or no row at all) is what resets
+    // the merge chain.
+    expect(dividers).toHaveLength(1);
+    expect(dividers[0].cells[0]).toEqual({
+      kind: 'text',
+      text: 'first block line 1\nfirst block line 2\nsecond block',
+    });
+  });
+
+  it('operator between comments starts a new divider row', () => {
+    const src = [
+      "' header A",
+      "' header A continued",
+      "EXIT",
+      "' header B",
+      "' header B continued",
+      "EXIT",
+    ].join('\n');
+    const r = rows(src, en);
+    expect(r).toHaveLength(4);
+    expect(r[0].mode).toBe('divider');
+    expect(r[0].cells[0]).toEqual({
+      kind: 'text',
+      text: 'header A\nheader A continued',
+    });
+    expect(r[1].operatorId).toBe('Op.Exit');
+    expect(r[2].mode).toBe('divider');
+    expect(r[2].cells[0]).toEqual({
+      kind: 'text',
+      text: 'header B\nheader B continued',
+    });
+    expect(r[3].operatorId).toBe('Op.Exit');
+  });
 });
 
 // ── Invariant: no physical <<>> in any template cell ──────

@@ -1,0 +1,154 @@
+/*
+ * coil-ide library theme.
+ *
+ * Exported as `coil-ide/theme.css` (see package.json exports). Consumers
+ * import this file from their own CSS after `@import "tailwindcss"`:
+ *
+ *   @import "tailwindcss";
+ *   @import "coil-ide/theme.css";
+ *
+ * Contains:
+ *   - CSS variables for the light palette (`:root`) and dark palette (`.dark`).
+ *   - Tailwind v4 `@theme inline` block that maps `--color-*`, `--font-*`,
+ *     `--radius-*` utility tokens onto the variables above.
+ *   - `@custom-variant dark` — scopes the `dark:` variant to elements inside
+ *     a `.dark` container (so a consumer can activate dark mode only within
+ *     a single subtree, e.g. the sandbox agent-viewer island).
+ *   - `@source` directive pointing Tailwind JIT at the component sources so
+ *     classes used by CoilHTable / EditorView / PipelineProvider are picked
+ *     up by downstream builds.
+ *
+ * Does NOT contain:
+ *   - `@import "tailwindcss"` — the consumer owns the Tailwind import.
+ *   - `@layer base { body { ... } }` or any playground-specific resets —
+ *     those stay in `playground/index.css`.
+ *
+ * Architecture: see coil-ide/DESIGN.md I-0008.
+ */
+
+/*
+ * @source path works symmetrically in two build contexts:
+ *   - dev  (playground):     file lives at   coil-ide/src/styles/theme.css
+ *                            `../` →         coil-ide/src/
+ *                            covers src/components/**\/*.tsx
+ *   - prod (consumer):       file lives at   node_modules/coil-ide/dist/theme.css
+ *                            `../` →         node_modules/coil-ide/dist/
+ *                            covers dist/chunks/*.js, dist/index.js, etc.
+ * Tailwind JIT ignores files that don't contain class usages, so the
+ * wildcard is safe.
+ */
+@source "../**/*.{tsx,ts,js}";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* Soft sepia-tinted light palette - easy on eyes */
+  --background: #f5f4f1;
+  --background-gradient-from: #eef3f2;
+  --background-gradient-via: #f4f2f5;
+  --background-gradient-to: #f5f3ee;
+  --foreground: #3d3d3d;
+  --card: #fafaf8;
+  --card-foreground: #3d3d3d;
+  --popover: #fafaf8;
+  --popover-foreground: #3d3d3d;
+  --primary: #5a6570;
+  --primary-foreground: #fafafa;
+  --secondary: #eeefed;
+  --secondary-foreground: #3d4248;
+  --muted: #f2f3f1;
+  --muted-foreground: #7a8288;
+  --accent: #e8eae6;
+  --accent-foreground: #3d4248;
+  --destructive: #c45c5c;
+  --destructive-foreground: #fafafa;
+  --border: #e5e6e3;
+  --input: #eeefed;
+  --ring: #5a6570;
+  --radius: 0.75rem;
+
+  /* IDE specific tokens */
+  --ide-toolbar: transparent;
+  --ide-panel: #fafaf8;
+  --ide-editor: #fcfcfa;
+  --ide-active: #5a6570;
+  --error: #c45c5c;
+  --warning: #b8923d;
+  --info: #4a7faa;
+  --success: #4a9a6a;
+}
+
+.dark {
+  /* Soft dark palette - warm gray with subtle color tints */
+  --background: #1a1a1e;
+  --background-gradient-from: #181c20;
+  --background-gradient-via: #1c1a20;
+  --background-gradient-to: #1a1c1e;
+  --foreground: #c8c8c8;
+  --card: #141416;
+  --card-foreground: #c8c8c8;
+  --popover: #141416;
+  --popover-foreground: #c8c8c8;
+  --primary: #909498;
+  --primary-foreground: #181a1c;
+  --secondary: #252628;
+  --secondary-foreground: #c0c4c8;
+  --muted: #252628;
+  --muted-foreground: #858a90;
+  --accent: #282a2c;
+  --accent-foreground: #c0c4c8;
+  --destructive: #d07070;
+  --destructive-foreground: #181a1c;
+  --border: #2a2c2e;
+  --input: #252628;
+  --ring: #909498;
+
+  /* IDE specific tokens */
+  --ide-toolbar: transparent;
+  --ide-panel: #121214;
+  --ide-editor: #141416;
+  --ide-active: #909498;
+  --error: #c87878;
+  --warning: #c4a858;
+  --info: #6898b8;
+  --success: #68a878;
+}
+
+@theme inline {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --color-background: var(--background);
+  --color-background-gradient-from: var(--background-gradient-from);
+  --color-background-gradient-via: var(--background-gradient-via);
+  --color-background-gradient-to: var(--background-gradient-to);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-ide-toolbar: var(--ide-toolbar);
+  --color-ide-panel: var(--ide-panel);
+  --color-ide-editor: var(--ide-editor);
+  --color-ide-active: var(--ide-active);
+  --color-error: var(--error);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-success: var(--success);
+}

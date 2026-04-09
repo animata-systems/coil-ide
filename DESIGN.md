@@ -367,3 +367,73 @@ Playground (`coil-ide/playground/`):
 - Поведение pipeline: те же tokenize→parse→validate, тот же debounce, тот же revealDiagnostic.
 
 **Уточнение (2026-04-09, по итогам Фазы 2 ревью).** Контракт `EditorView.dialect` сужен со `DialectTable` до `string`. Компонент использует диалект только как ключ для `ensureLanguage(key, monaco)` и `setModelLanguage(model, languageId(key))` — ни то, ни другое не нуждается в полной таблице. Выгоды: (а) потребитель передаёт просто `"ru-standard"` вместо импорта `dialectRegistry` ради одного prop'а, что критично для sandbox-остров (I-0006, S-0001); (б) контракт концептуально честнее — «имя языка для Monaco» ≠ «таблица диалекта для парсера». Цена: `EditorView` опосредованно зависит от глобального `dialectRegistry` (внутри `ensureLanguage`); расширение до кастомных диалектов, зарегистрированных потребителем, потребует либо опционального `dialectTable?: DialectTable` prop'а, либо явного параметра на `ensureLanguage`. Отложено как задача на момент, когда кастомные диалекты появятся вне библиотеки.
+
+---
+
+## I-0008 — Экспорт темы библиотеки через `coil-ide/theme.css`
+
+| | |
+|---|---|
+| **Статус** | принят |
+| **Дата** | 2026-04-09 |
+| **Scope** | `src/styles/theme.css` (новый), `package.json` (exports + files), `playground/index.css`, внешние потребители (`coil-sandbox` viewer) |
+| **Связан с** | I-0004, I-0005, I-0006, I-0007, S-0001, STORY-015 фаза 5 |
+
+**Контекст.** `CoilHTable` и другие будущие библиотечные компоненты активно используют тематические Tailwind-классы (`text-foreground`, `text-primary`, `bg-primary/15`, `text-muted-foreground`, `bg-ide-panel`, `divide-foreground/5` и т.д.). В Tailwind v4 эти классы резолвятся только при наличии `@theme inline` блока, который маппит токены на CSS-переменные `--primary`, `--color-foreground`, `--color-ide-panel`. Сейчас этот блок вместе с определениями переменных живёт только в `playground/index.css` — то есть является частью **приложения playground**, а не **библиотеки coil-ide**.
+
+Это делает библиотеку невидимо зависимой от инфраструктуры playground'а: внешний потребитель (sandbox viewer, STORY-015 фаза 5) подключает `CoilHTable` и получает компонент, у которого все классы разрешаются в «нет стиля» — визуально компонент рендерится пустым или сломанным. Обнаружилось на фазе 5 группе B (ревью плана реализации 5.4).
+
+**Решение.** coil-ide экспортирует свою тему как отдельный CSS-файл через subpath `./theme.css`. Потребитель подключает его одной строкой из своего CSS.
+
+**Контракт файла `coil-ide/theme.css` (новый `src/styles/theme.css`).** Содержит **только** то, что нужно, чтобы Tailwind v4 в потребителе корректно отрендерил библиотечные компоненты:
+
+1. Определения CSS-переменных темы — `:root` (light) и `.dark` (dark). Структура — зеркало текущего `playground/index.css` (цветовая палитра, `--radius`, IDE-токены `--ide-toolbar/--ide-panel/--ide-editor/--ide-active`, semantic `--error/--warning/--info/--success`).
+2. `@theme inline { ... }` блок, маппящий `--color-*`, `--font-*`, `--radius-*` на переменные — то же содержание, что уже есть в `playground/index.css`.
+3. `@custom-variant dark (&:where(.dark, .dark *));` — чтобы потребитель мог активировать dark-палитру, поставив `className="dark"` на контейнер React root, не затрагивая остальную страницу.
+4. **НЕ содержит** `@import 'tailwindcss'` (tailwind подключается потребителем отдельно), `@layer base { body { ... } }` (playground-специфичный body-фон), никакой playground-специфичной вёрстки.
+5. Содержит `@source` директивы, указывающие Tailwind v4 JIT, где искать классы, используемые библиотечными компонентами: `@source '../components/**/*.tsx';` (sources относительно расположения `src/styles/theme.css`). После сборки библиотеки скриптом `prepare` файл копируется в `dist/theme.css`, а `@source` переписывается на `../chunks/*.js`, `../components/*.js` (или аналог — детали раскладки dist уточняет кодер; важно, что после сборки `@source` покрывает именно то, что реально ставится в `node_modules/coil-ide/dist`).
+
+**Экспорт в `package.json`:**
+```json
+"exports": {
+  ".":          { "types": "./dist/index.d.ts",    "import": "./dist/index.js" },
+  "./headless": { "types": "./dist/headless.d.ts", "import": "./dist/headless.js" },
+  "./theme.css": "./dist/theme.css"
+}
+```
+`files` должен включать `dist/theme.css` (если не весь `dist/` — тогда явно).
+
+**Использование playground'ом.** `playground/index.css` перестаёт содержать дубликат переменных/`@theme inline`; вместо этого делает `@import 'coil-ide/theme.css';` после `@import 'tailwindcss';`. Playground-специфичные стили (`@layer base { body { ... } }`, body-градиент) остаются в `playground/index.css`. Эта правка — часть этой же задачи I-0008: playground и библиотека используют **один и тот же** источник темы, иначе гарантии «что playground показывает — то и sandbox покажет» нет.
+
+**Использование потребителем (sandbox viewer).** В `coil-sandbox/src/web/viewer/viewer.css`:
+```css
+@import "tailwindcss";
+@import "coil-ide/theme.css";
+```
+Контейнер React root (`<div id="agent-viewer-root">`) получает `className="dark"` при монтировании — sandbox однотемный dark, и это активирует dark-палитру только в пределах viewer-поддерева, не затрагивая vanilla-страницу sandbox'а.
+
+**Почему.**
+
+- *Концептуальная цельность.* Тема компонентов — неотъемлемая часть библиотеки, а не инфраструктуры приложения. Без темы компоненты не работают — значит тема должна ехать с ними. Сейчас тема живёт в playground из исторических причин (до STORY-015 не было внешних потребителей), это технический долг.
+- *Минимальная правка contract-surface.* Один новый subpath export, один импорт у потребителя, один рефакторинг playground'а. Никаких изменений в React API компонентов.
+- *Единый источник истины.* Playground и sandbox рендерят `CoilHTable` из одной палитры. Любое изменение темы в будущем — одна правка в `src/styles/theme.css`, оба потребителя получают обновление автоматически.
+- *Tailwind v4 `@source` механика снимает необходимость в config-файлах потребителя.* Потребителю не нужно знать путь до `node_modules/coil-ide/dist` и руками прописывать content paths — `@source` в самом theme.css делает это изнутри.
+
+**Цена.**
+
+- Нужна небольшая доработка build-пайплайна coil-ide, чтобы `src/styles/theme.css` попал в `dist/theme.css` с правильным `@source` путём. Варианты: (а) vite-плагин `copy`, (б) npm-скрипт `cp src/styles/theme.css dist/theme.css` в `build:lib`, (в) два разных файла — source-копия для playground dev (`@source '../components/**/*.tsx'`) и dist-копия для production (`@source './chunks/*.js'`). Рекомендую (б)+(в) на выбор кодера: проще всего держать два файла — `src/styles/theme.dev.css` (для playground `@import '../../src/styles/theme.dev.css'`) и `src/styles/theme.css` (для потребителей, с `@source` на `./**/*.js` — резолвится относительно финального места в `dist/`). Финальное решение — за кодером, главное что контракт subpath-экспорта соблюдён.
+- Playground тоже трогаем — это риск визуальной регрессии. Mitigate: после правки playground `npm run dev` + визуальная проверка.
+- Фаза 5 sandbox блокируется до того момента, пока coil-ide не закоммитил и не запушил новую версию, sandbox `package.json` не подтянул обновлённый git ref. Фаундер коммитит, кодер обновляет ref; группа B sandbox'а начинается после этого.
+
+**Альтернативы, которые отвергнуты.**
+
+- *Дубликат темы в `coil-sandbox/src/web/viewer/viewer.css`.* Просто скопировать `:root`/`.dark`/`@theme inline` из `playground/index.css`. Минус: жёсткое дублирование, любое изменение палитры в coil-ide молча расходится с sandbox, никто не заметит до визуальной регрессии. Концептуально неверно — sandbox не должен знать внутренние токены библиотеки.
+- *Переписать компоненты coil-ide на инлайн-стили / CSS-модули.* Правильный архитектурный рефакторинг, но масштаб сильно больше — трогает каждый компонент, лишает Tailwind-утилит. Вне scope STORY-015.
+- *Компонентная инициализация темы через JS (компонент сам инжектит `<style>` в `document.head`).* Работает, но ломает серверный рендеринг, конфликтует с Vite CSS-обработкой и делает невозможным статический анализ используемых классов. Отвергнуто.
+
+**Что должно остаться истинным после применения.**
+
+- Playground визуально идентичен тому, что был до правки (палитра, фон, отступы).
+- sandbox viewer рендерит `CoilHTable` и другие библиотечные компоненты в dark-теме без визуальных регрессий.
+- Сторонний потребитель библиотеки может подключить тему одной строкой `@import 'coil-ide/theme.css';` без знания внутреннего устройства `node_modules/coil-ide/dist`.
+- `.dark` scope локализован через `&:where(.dark, .dark *)` и не затрагивает ДОМ за пределами элемента с классом.

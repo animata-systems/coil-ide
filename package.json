@@ -15,13 +15,14 @@
     "./headless": {
       "types": "./dist/headless.d.ts",
       "import": "./dist/headless.js"
-    }
+    },
+    "./theme.css": "./dist/theme.css"
   },
   "scripts": {
     "dev": "vite",
     "prepare": "npm run build:lib",
     "build": "npm run build:lib && npm run build:playground",
-    "build:lib": "vite build -c vite.lib.config.ts && tsc -p tsconfig.lib.build.json",
+    "build:lib": "vite build -c vite.lib.config.ts && tsc -p tsconfig.lib.build.json && cp src/styles/theme.css dist/theme.css",
     "build:playground": "vite build",
     "lint": "eslint .",
     "test": "vitest run",
