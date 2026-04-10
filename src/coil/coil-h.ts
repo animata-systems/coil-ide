@@ -152,7 +152,7 @@ function buildSendCells(node: SendNode, dialect: DialectTable): CoilHCell[] {
     cells.push({
       kind: 'modifier',
       label: dialect.modifiers['Mod.For'],
-      value: plain(node.for.map(n => `@${n}`).join(', ')),
+      value: plain(node.for.map(p => p.ref.kind === 'literal' ? `@${p.ref.value}` : `@$${p.ref.name}${p.ref.path.map(f => `.${f}`).join('')}`).join(', ')),
     });
   }
   if (node.replyTo) {
@@ -218,7 +218,7 @@ function buildThinkCells(node: ThinkNode, dialect: DialectTable): CoilHCell[] {
     cells.push({
       kind: 'modifier',
       label: dialect.modifiers['Mod.Using'],
-      value: plain(node.using.map(t => `!${t.name}`).join(', ')),
+      value: plain(node.using.map(t => t.ref.kind === 'literal' ? `!${t.ref.value}` : `!$${t.ref.name}${t.ref.path.map(f => `.${f}`).join('')}`).join(', ')),
     });
   }
 
@@ -277,7 +277,7 @@ function buildExecuteCells(node: ExecuteNode, dialect: DialectTable): CoilHCell[
   cells.push({
     kind: 'modifier',
     label: dialect.modifiers['Mod.Using'],
-    value: plain(`!${node.tool.name}`),
+    value: plain(node.tool.ref.kind === 'literal' ? `!${node.tool.ref.value}` : `!$${node.tool.ref.name}${node.tool.ref.path.map(f => `.${f}`).join('')}`),
   });
   if (node.args.length > 0) {
     cells.push({
