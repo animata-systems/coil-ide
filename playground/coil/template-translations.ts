@@ -13,20 +13,8 @@ export interface TemplateLang {
 export type TranslationMap = Record<string, Record<string, TemplateLang>>;
 
 export const TEMPLATE_TRANSLATIONS: TranslationMap = {
-  // ── hello (en-standard) ───────────────────────────────
-  hello: {
-    'What is your name?': {
-      en: 'What is your name?',
-      ru: 'Как тебя зовут?',
-    },
-    'Hello, $name!': {
-      en: 'Hello, $name!',
-      ru: 'Привет, $name!',
-    },
-  },
-
-  // ── hello-ru (ru-matrix) ──────────────────────────────
-  'hello-ru': {
+  // ── hello-world (ru-standard) ──────────────────────────
+  'hello-world': {
     'Как тебя зовут?': {
       en: 'What is your name?',
       ru: 'Как тебя зовут?',

@@ -15,6 +15,7 @@ import type {
   ArgEntry,
   OperatorNode,
   CommentNode,
+  ExpressionNode,
 } from 'coil-runtime/browser';
 
 // ── Structural cells (I-0005) ──────────────────────────────
@@ -80,6 +81,8 @@ export function bodyValueToText(body: BodyValue): string {
     case 'string':
       return body.value;
     case 'number':
+      return String(body.value);
+    case 'boolean':
       return String(body.value);
   }
 }
@@ -328,17 +331,21 @@ function extractDegradedBody(
   return lines.join('\n').trim();
 }
 
-function buildIfCells(node: IfNode): CoilHCell[] {
-  return [{ kind: 'text', text: node.condition }];
+function exprToText(expr: ExpressionNode, source: string): string {
+  return source.slice(expr.span.offset, expr.span.offset + expr.span.length);
 }
 
-function buildRepeatCells(node: RepeatNode, dialect: DialectTable): CoilHCell[] {
+function buildIfCells(node: IfNode, source: string): CoilHCell[] {
+  return [{ kind: 'text', text: exprToText(node.condition, source) }];
+}
+
+function buildRepeatCells(node: RepeatNode, dialect: DialectTable, source: string): CoilHCell[] {
   const cells: CoilHCell[] = [];
   if (node.until) {
     cells.push({
       kind: 'modifier',
       label: dialect.modifiers['Mod.Until'],
-      value: plain(node.until),
+      value: plain(exprToText(node.until, source)),
     });
   }
   cells.push({
@@ -561,7 +568,7 @@ function convertNodes(
         rows.push({
           step,
           operatorId: 'Op.If',
-          cells: buildIfCells(node),
+          cells: buildIfCells(node, source),
           name: '',
           mode: 'full',
           templates: [],
@@ -573,7 +580,7 @@ function convertNodes(
         rows.push({
           step,
           operatorId: 'Op.Repeat',
-          cells: buildRepeatCells(node, dialect),
+          cells: buildRepeatCells(node, dialect, source),
           name: '',
           mode: 'full',
           templates: [],

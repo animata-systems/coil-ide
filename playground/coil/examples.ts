@@ -1,5 +1,4 @@
-import helloEn from 'coil/examples/hello.coil?raw';
-import helloRu from 'coil/examples/hello.ru.coil?raw';
+import helloWorld from 'coil/examples/hello-world.coil?raw';
 import routing from 'coil/examples/patterns/routing.coil?raw';
 import promptChaining from 'coil/examples/patterns/prompt-chaining.coil?raw';
 import parallelization from 'coil/examples/patterns/parallelization.coil?raw';
@@ -22,25 +21,36 @@ export interface Example {
   content: string;
 }
 
+const DEFAULT_DIALECT = 'en-standard';
+const DIALECT_RE = /^'\s*@dialect\s+(\S+)/m;
+
+function extractDialect(source: string): string {
+  const match = source.match(DIALECT_RE);
+  return match ? match[1] : DEFAULT_DIALECT;
+}
+
+function ex(id: string, name: string, group: ExampleGroup, content: string): Example {
+  return { id, name, group, dialect: extractDialect(content), content };
+}
+
 export const EXAMPLES: Example[] = [
   // Hello World
-  { id: 'hello', name: 'Hello World (EN)', group: 'Hello World', dialect: 'en-standard', content: helloEn },
-  { id: 'hello-ru', name: 'Hello World (RU)', group: 'Hello World', dialect: 'ru-matrix', content: helloRu },
+  ex('hello-world', 'Hello World', 'Hello World', helloWorld),
 
   // Паттерны
-  { id: 'routing', name: 'Маршрутизация', group: 'Паттерны', dialect: 'ru-standard', content: routing },
-  { id: 'prompt-chaining', name: 'Цепочка промптов', group: 'Паттерны', dialect: 'ru-standard', content: promptChaining },
-  { id: 'parallelization', name: 'Параллелизация', group: 'Паттерны', dialect: 'ru-standard', content: parallelization },
-  { id: 'evaluator-optimizer', name: 'Оценщик-оптимизатор', group: 'Паттерны', dialect: 'ru-standard', content: evaluatorOptimizer },
-  { id: 'internal-delegation', name: 'Внутренняя делегация', group: 'Паттерны', dialect: 'ru-standard', content: internalDelegation },
-  { id: 'multi-agent-orchestration', name: 'Мультиагентная оркестрация', group: 'Паттерны', dialect: 'ru-standard', content: multiAgentOrchestration },
+  ex('routing', 'Маршрутизация', 'Паттерны', routing),
+  ex('prompt-chaining', 'Цепочка промптов', 'Паттерны', promptChaining),
+  ex('parallelization', 'Параллелизация', 'Паттерны', parallelization),
+  ex('evaluator-optimizer', 'Оценщик-оптимизатор', 'Паттерны', evaluatorOptimizer),
+  ex('internal-delegation', 'Внутренняя делегация', 'Паттерны', internalDelegation),
+  ex('multi-agent-orchestration', 'Мультиагентная оркестрация', 'Паттерны', multiAgentOrchestration),
 
   // Антипаттерны
-  { id: 'everything-in-one-think', name: 'Всё в одном THINK', group: 'Антипаттерны', dialect: 'en-standard', content: everythingInOneThink },
-  { id: 'think-for-deterministic-check', name: 'THINK для проверки', group: 'Антипаттерны', dialect: 'en-standard', content: thinkForDeterministicCheck },
-  { id: 'missing-wait', name: 'Пропущенный WAIT', group: 'Антипаттерны', dialect: 'en-standard', content: missingWait },
-  { id: 'define-instead-of-set', name: 'DEFINE вместо SET', group: 'Антипаттерны', dialect: 'en-standard', content: defineInsteadOfSet },
-  { id: 'send-when-think-needed', name: 'SEND вместо THINK', group: 'Антипаттерны', dialect: 'en-standard', content: sendWhenThinkNeeded },
+  ex('everything-in-one-think', 'Всё в одном THINK', 'Антипаттерны', everythingInOneThink),
+  ex('think-for-deterministic-check', 'THINK для проверки', 'Антипаттерны', thinkForDeterministicCheck),
+  ex('missing-wait', 'Пропущенный WAIT', 'Антипаттерны', missingWait),
+  ex('define-instead-of-set', 'DEFINE вместо SET', 'Антипаттерны', defineInsteadOfSet),
+  ex('send-when-think-needed', 'SEND вместо THINK', 'Антипаттерны', sendWhenThinkNeeded),
 ];
 
 export const EXAMPLE_GROUPS: ExampleGroup[] = ['Мои файлы', 'Hello World', 'Паттерны', 'Антипаттерны'];

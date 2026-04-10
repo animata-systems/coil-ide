@@ -525,7 +525,7 @@ describe('Op.If', () => {
     const src = [
       'ACTORS user',
       '',
-      'IF $x == 1',
+      'IF $x = 1',
       '  EXIT',
       'END',
       '',
@@ -537,7 +537,7 @@ describe('Op.If', () => {
     expect(full[0].operatorId).toBe('Op.Actors');
     expect(full[1].step).toEqual([2]);
     expect(full[1].operatorId).toBe('Op.If');
-    expect(full[1].cells).toEqual([{ kind: 'text', text: '$x == 1' }]);
+    expect(full[1].cells).toEqual([{ kind: 'text', text: '$x = 1' }]);
     expect(full[2].step).toEqual([2, 1]);
     expect(full[2].operatorId).toBe('Op.Exit');
     expect(full[3].step).toEqual([3]);
@@ -545,7 +545,7 @@ describe('Op.If', () => {
 
   it('maps ЕСЛИ with multiple nested steps (ru)', () => {
     const src = [
-      'ЕСЛИ $flag == 1',
+      'ЕСЛИ $flag = 1',
       '  ОПРЕДЕЛИ msg',
       '  "hello"',
       '  КОНЕЦ',
@@ -564,8 +564,8 @@ describe('Op.If', () => {
 
   it('maps double nesting (IF inside IF)', () => {
     const src = [
-      'IF $a == 1',
-      '  IF $b == 2',
+      'IF $a = 1',
+      '  IF $b = 2',
       '    EXIT',
       '  END',
       'END',
@@ -579,7 +579,7 @@ describe('Op.If', () => {
 
   it('comment inside block does not affect numbering', () => {
     const src = [
-      'IF $x == 1',
+      'IF $x = 1',
       "  ' note",
       '  EXIT',
       'END',

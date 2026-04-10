@@ -10,12 +10,10 @@ import {
 import { astToCoilH } from './coil-h';
 import enStandard from 'coil/dialects/en-standard/en-standard.json';
 import ruStandard from 'coil/dialects/ru-standard/ru-standard.json';
-import ruMatrix from 'coil/dialects/ru-matrix/ru-matrix.json';
 
 const dialects: Record<string, DialectTable> = {
   'en-standard': enStandard as DialectTable,
   'ru-standard': ruStandard as DialectTable,
-  'ru-matrix': ruMatrix as DialectTable,
 };
 
 function examplePath(rel: string): string {
@@ -32,9 +30,8 @@ function readExample(rel: string): string {
  * Should have zero degraded rows.
  */
 const phase1Examples = [
-  { file: 'hello.coil', dialect: 'en-standard' },
-  { file: 'hello.ru.coil', dialect: 'ru-matrix' },
-  { file: 'anti-patterns/define-instead-of-set.coil', dialect: 'en-standard' },
+  { file: 'hello-world.coil', dialect: 'ru-standard' },
+  { file: 'anti-patterns/define-instead-of-set.coil', dialect: 'ru-standard' },
 ];
 
 function parseAndMap(source: string, dialect: DialectTable) {
@@ -62,7 +59,7 @@ describe('Phase 1 examples — no degraded rows', () => {
  * Should have zero degraded rows.
  */
 const phase2Examples = [
-  { file: 'anti-patterns/everything-in-one-think.coil', dialect: 'en-standard' },
+  { file: 'anti-patterns/everything-in-one-think.coil', dialect: 'ru-standard' },
   { file: 'patterns/parallelization.coil', dialect: 'ru-standard' },
   { file: 'patterns/routing.coil', dialect: 'ru-standard' },
   { file: 'patterns/prompt-chaining.coil', dialect: 'ru-standard' },
@@ -92,7 +89,7 @@ describe('Phase 2 examples — no degraded rows', () => {
 
   it('everything-in-one-think.coil — key operators present', () => {
     const source = readExample('anti-patterns/everything-in-one-think.coil');
-    const dialect = dialects['en-standard'];
+    const dialect = dialects['ru-standard'];
     const rows = parseAndMap(source, dialect);
     const ops = rows.filter(r => r.mode === 'full').map(r => r.operatorId);
     expect(ops).toContain('Op.Think');

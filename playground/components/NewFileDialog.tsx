@@ -10,10 +10,13 @@ interface DialectOption {
 
 const DIALECT_OPTIONS: DialectOption[] = [
   { id: 'en-standard', name: 'en-standard', extension: '.en.coil', description: 'Standard English' },
-  { id: 'en-profanity', name: 'en-profanity', extension: '.en.coil', description: 'Profanity English' },
   { id: 'ru-standard', name: 'ru-standard', extension: '.ru.coil', description: 'Стандартный русский' },
-  { id: 'ru-matrix', name: 'ru-matrix', extension: '.ru.coil', description: 'Красная таблетка' },
-  { id: 'ru-mat', name: 'ru-mat', extension: '.ru.coil', description: 'Мат' },
+  { id: 'de-standard', name: 'de-standard', extension: '.de.coil', description: 'Standarddeutsch' },
+  { id: 'es-standard', name: 'es-standard', extension: '.es.coil', description: 'Español estándar' },
+  { id: 'fr-standard', name: 'fr-standard', extension: '.fr.coil', description: 'Français standard' },
+  { id: 'ja-standard', name: 'ja-standard', extension: '.ja.coil', description: '日本語' },
+  { id: 'pt-br-standard', name: 'pt-br-standard', extension: '.pt-br.coil', description: 'Português brasileiro' },
+  { id: 'zh-standard', name: 'zh-standard', extension: '.zh.coil', description: '简体中文' },
 ];
 
 interface NewFileDialogProps {
