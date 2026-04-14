@@ -437,3 +437,151 @@ Playground (`coil-ide/playground/`):
 - sandbox viewer рендерит `CoilHTable` и другие библиотечные компоненты в dark-теме без визуальных регрессий.
 - Сторонний потребитель библиотеки может подключить тему одной строкой `@import 'coil-ide/theme.css';` без знания внутреннего устройства `node_modules/coil-ide/dist`.
 - `.dark` scope локализован через `&:where(.dark, .dark *)` и не затрагивает ДОМ за пределами элемента с классом.
+
+---
+
+## I-0009 — Markdown-рендеринг шаблонов в COIL-H через `marked` + `DOMPurify`
+
+| | |
+|---|---|
+| **Статус** | принят |
+| **Дата** | 2026-04-14 |
+| **Scope** | `coil-ide/src/components/CoilHTable.tsx`, `coil-ide/package.json` |
+| **Связан с** | I-0005 |
+
+**Контекст.** Шаблоны в COIL часто содержат промпты и сообщения для агентов/людей. Эти тексты естественно используют Markdown: списки инструкций, `code`-фрагменты, **акценты**, ссылки. COIL-H рендерит ячейки `{ kind: 'template' }` и `{ value.kind: 'template' }` (I-0005) как plain-text — пользователь видит сырую разметку вместо форматированного контента, что снижает читаемость.
+
+Рассмотрены три варианта:
+
+- **A. `marked` + `DOMPurify`** (~12KB + 8KB gzip). MD→HTML строка, санитайз, `dangerouslySetInnerHTML`. Быстрый, лёгкий, production-grade.
+- **B. `react-markdown`** (~50KB gzip). MD→React-элементы напрямую. Нативный для React, но в 2.5 раза тяжелее и тянет remark + unified + rehype. Для ячеек IDE-таблицы — избыточен.
+- **C. Custom subset-парсер** (0 deps). Ручной MD-парсер для базового подмножества. Tech debt: поддержка своего парсера, неизбежные баги на edge cases.
+
+**Решение.** Вариант A.
+
+Новые `dependencies` в `package.json`: `marked`, `dompurify`. Типы: `@types/dompurify` в `devDependencies`.
+
+Пайплайн рендеринга в `TemplateBlock`:
+```
+text → renderTemplate(text) → marked.parse(translated) → DOMPurify.sanitize(html) → dangerouslySetInnerHTML
+```
+
+`CoilHTable` получает новый необязательный prop `markdownTemplates?: boolean` (default `true`). При `false` — текущее plain-text поведение. Переключатель живёт в playground-обёртке `CoilHPanel`, не в библиотечном компоненте.
+
+CSS для MD-контента внутри ячеек: Tailwind prose-классы не используются (избыточны, тянут `@tailwindcss/typography`). Вместо этого — scoped CSS через класс `.coil-h-md` с минимальными стилями для `h1`–`h6`, `ul`/`ol`, `code`, `pre`, `a`, `strong`, `em`. Стили добавляются в `src/styles/theme.css` (I-0008), чтобы потребители автоматически их получили.
+
+**Почему.**
+
+- Минимальный размер бандла — критично для sandbox React-острова (I-0006).
+- `DOMPurify` обязателен: шаблоны содержат пользовательский текст, XSS-вектор реален.
+- `dangerouslySetInnerHTML` безопасен в паре с DOMPurify — стандартный паттерн.
+- Prop `markdownTemplates` даёт потребителю контроль: sandbox может рендерить MD, headless-потребитель игнорирует (он не рендерит React вообще).
+
+**Цена.**
+
+- Две новые runtime-зависимости. Это первые внешние deps помимо `coil`/`coil-runtime`. Допустимо: оба пакета стабильны, без транзитивов.
+- `dangerouslySetInnerHTML` — точка аудита. Mitigation: DOMPurify + JSDoc-комментарий на компоненте.
+- CSS для `.coil-h-md` нужно поддерживать в sync с темой (I-0008).
+
+---
+
+## I-0010 — COIL-H: сегментированные ссылки и навигация по декларациям
+
+| | |
+|---|---|
+| **Статус** | принят как направление |
+| **Дата** | 2026-04-14 |
+| **Scope** | `coil-ide/src/coil/coil-h.ts`, `coil-ide/src/components/CoilHTable.tsx`, `coil-ide/src/styles/theme.css` |
+| **Связан с** | I-0005, I-0009 |
+
+**Контекст.** COIL-H маппинг (I-0005) проектирует структурные ячейки (`modifier`, `template`, `result-block`, `args-block`, `text`), но внутри ячеек ссылки сведены к плоским строкам: `templateToText()` объединяет `TextPart` и `RefPart` в одну строку; `buildSendCells` форматирует `@name` как `plain('@name')`. Рендерер `CoilHTable` не различает текст и ссылки — кликнуть и перейти к декларации невозможно.
+
+AST полностью сохраняет типизацию: `RefPart` в шаблонах, `ParticipantRef`/`ToolRef`/`ChannelRef`/`PromiseRef`/`StreamRef` вне шаблонов, `TypedRef { kind: 'literal' | 'dynamic' }` для статических и динамических ссылок. Информация теряется при маппинге в `CoilHCell`.
+
+**Решение.** Добавить сегментированное представление содержимого ячеек и индекс деклараций.
+
+### Новые типы
+
+```typescript
+export interface CoilHRef {
+  sigil: '$' | '@' | '!' | '#' | '?' | '~';
+  name: string;
+  path: string[];
+  dynamic: boolean;               // @$name → true
+  targetStep: number[] | null;    // step where declared; null = unresolved/external
+}
+
+export type CoilHSegment =
+  | { kind: 'text'; text: string }
+  | { kind: 'ref'; ref: CoilHRef };
+```
+
+### Изменения в существующих типах
+
+| Тип | Было | Стало |
+|---|---|---|
+| `CoilHCell.kind='template'` | `{ text: string }` | `{ segments: CoilHSegment[] }` |
+| `CoilHValue.kind='template'` | `{ text: string }` | `{ segments: CoilHSegment[] }` |
+| `CoilHValue` | `'plain' \| 'template'` | `'plain' \| 'template' \| 'ref'` (новый: типизированная ссылка) |
+| `CoilHCell.kind='args-block'` | `args: { key: string; value: string }[]` | `args: { key: string; value: CoilHSegment[] }[]` |
+
+Новый `CoilHValue.kind='ref'` — для типизированных ссылок в модификаторах вне шаблонов (`КОМУ @analyst`, `ЧЕРЕЗ $model`, `НА ?result`, `ИСПОЛЬЗУЯ !search`).
+
+### Индекс деклараций
+
+`astToCoilH()` в первом проходе строит `Map<string, number[]>`:
+
+| Источник | Ключ |
+|---|---|
+| Оператор с `name` | `$<name>` |
+| `ActorsNode.names[]` | `@<name>` |
+| `ToolsNode.names[]` | `!<name>` |
+| `DefineNode.name` | `$<name>` |
+| `SetNode.target` | `$<target.name>` |
+| `WaitNode.name` (если есть) | оператор, на чей результат ждут |
+
+`CoilHRef.targetStep` заполняется из индекса. Вложенные операторы получают иерархический step (`[5, 2]`).
+
+### Динамические ссылки
+
+`@$assignee` → `CoilHRef { sigil: '@', name: 'assignee', dynamic: true, targetStep: [step где $assignee объявлен] }`.
+
+Рендер: статический `@` badge + кликабельный `$assignee` (ведёт к декларации переменной). Штриховой underline — индикатор «цель определяется в runtime».
+
+`#channel/$segment` → два сегмента: literal `channel` (нелинкуемый текст `#channel/`) + dynamic `$segment` (линк на переменную).
+
+### Навигация в CoilHTable
+
+- Строки таблицы получают `id="step-{step.join('.')}"`.
+- Ref-сегменты рендерятся как `<a href="#step-N.M" class="coil-h-ref coil-h-ref--{kind}">`.
+- CSS: `:target` pseudo-class подсвечивает строку-цель.
+- `onClick` на ссылке вызывает `scrollIntoView({ behavior: 'smooth', block: 'center' })` для плавной навигации.
+
+### Взаимодействие с I-0009 (Markdown)
+
+MD рендерится только на текстовых сегментах. Чтобы не терять markdown-контекст на границе ref-сегмента (пример: `**bold $ref bold**`), используется двухпроходный рендер: полный текст с UUID-placeholder'ами для ссылок → `marked.parse` → замена placeholder'ов на `<a>` HTML.
+
+### Помощник обратной совместимости
+
+```typescript
+export function segmentsToText(segments: CoilHSegment[]): string {
+  return segments.map(s => s.kind === 'text' ? s.text : `${s.ref.sigil}${s.ref.name}${s.ref.path.map(f => `.${f}`).join('')}`).join('');
+}
+```
+
+Заменяет старый `templateToText()` для потребителей, которым нужна плоская строка. Поле `CoilHRow.templates` (для translation matching) строится через `segmentsToText`.
+
+**Почему.**
+
+- Единственный способ сделать ссылки кликабельными — передать их структуру из AST через COIL-H в рендерер. Плоские строки этого не позволяют.
+- Индекс деклараций — проекция AST, не runtime-состояние. Соответствует принципу «COIL-H — проекция для чтения».
+- Headless-потребители получают `CoilHRef` и могут строить свою навигацию (Markdown-экспорт с `[link](#anchor)`, accessibility, etc.).
+- `segmentsToText` обеспечивает обратную совместимость для translation matching.
+
+**Цена.**
+
+- Все `build*Cells` функции в `coil-h.ts` переписываются: от `plain(text)` / `templateToText()` к сегментированному представлению. ~15 функций.
+- Тесты `coil-h.test.ts` (777 строк) и `coil-h-examples.test.ts` (161 строк) переписываются под сегменты. Механически, но объёмно.
+- `CoilHTable.tsx` усложняется: `TemplateBlock`, `ValueView`, `ArgsBlock` рендерят сегменты вместо строк. Новые компоненты `RefLink` и `SegmentView`.
+- CSS для ref-стилей и `:target` — новые стили в `theme.css` (I-0008).
+- **I-0009 (MD) зависит от I-0010**: markdown-рендеринг проектируется под сегментированную модель, не под плоские строки. Порядок реализации: сначала I-0010, потом I-0009.
