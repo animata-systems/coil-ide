@@ -22,7 +22,7 @@ export {
   languageId,
 } from './coil/languages';
 export { spanToRange } from './coil/monaco-utils';
-export { buildMonarchLanguage } from './coil/monarch';
+export { createCoilMonacoTokensProvider } from './coil/monaco-tokens-provider';
 export {
   COIL_LIGHT_THEME,
   COIL_DARK_THEME,

@@ -802,7 +802,7 @@ interface CoilHTableProps {
 
 | | |
 |---|---|
-| **Статус** | принят как направление |
+| **Статус** | принят |
 | **Дата** | 2026-04-14 |
 | **Scope** | `coil-ide/src/coil/monarch.ts` (удаление), `coil-ide/src/coil/languages.ts`, `coil-ide/src/coil/monaco-utils.ts`, `coil-runtime` (никаких изменений API не требуется) |
 | **Связан с** | STORY-019, D-0050 (heredoc-форма), R-0021/R-0023 (lexer токены) |

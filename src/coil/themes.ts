@@ -16,6 +16,8 @@ export const coilLightTheme: editor.IStandaloneThemeData = {
     { token: 'keyword.modifier', foreground: '1868a0' },                       // sky blue
     { token: 'keyword.policy', foreground: '7050a8', fontStyle: 'italic' },
     { token: 'keyword.type', foreground: '987020' },                           // warm yellow
+    { token: 'keyword.expression', foreground: '7050a8' },                     // purple — И/ИЛИ/НЕ etc.
+    { token: 'keyword', foreground: '5530a8' },                                // fallback
 
     // Sigils
     { token: 'variable', foreground: '987020' },              // warm yellow
@@ -27,10 +29,16 @@ export const coilLightTheme: editor.IStandaloneThemeData = {
 
     // Templates — green like types were
     { token: 'delimiter.template', foreground: '207048' },    // green
+    { token: 'delimiter.heredoc', foreground: '207048', fontStyle: 'bold' },
     { token: 'string.template', foreground: '207048' },       // green
 
-    // Duration
+    // Numbers / strings / identifiers
+    { token: 'number', foreground: '987020' },
     { token: 'number.duration', foreground: '207080' },       // teal
+    { token: 'string', foreground: 'a04040' },                // matches tool — strings are rare
+    { token: 'identifier', foreground: '383838' },            // default foreground
+    { token: 'operator.comparison', foreground: '5530a8' },
+    { token: 'delimiter', foreground: '707070' },
 
     // Comments
     { token: 'comment', foreground: '8a8a8a', fontStyle: 'italic' },
@@ -56,6 +64,8 @@ export const coilDarkTheme: editor.IStandaloneThemeData = {
     { token: 'keyword.modifier', foreground: '58b0e8' },                       // sky blue
     { token: 'keyword.policy', foreground: 'b898cc', fontStyle: 'italic' },
     { token: 'keyword.type', foreground: 'd8c880' },                           // warm yellow
+    { token: 'keyword.expression', foreground: 'b898cc' },                     // purple — И/ИЛИ/НЕ
+    { token: 'keyword', foreground: 'c490e0' },                                // fallback
 
     // Sigils
     { token: 'variable', foreground: 'd8c880' },              // warm yellow
@@ -67,10 +77,16 @@ export const coilDarkTheme: editor.IStandaloneThemeData = {
 
     // Templates — green
     { token: 'delimiter.template', foreground: '8cd4a8' },    // green
+    { token: 'delimiter.heredoc', foreground: '8cd4a8', fontStyle: 'bold' },
     { token: 'string.template', foreground: '8cd4a8' },       // green
 
-    // Duration
+    // Numbers / strings / identifiers
+    { token: 'number', foreground: 'd8c880' },
     { token: 'number.duration', foreground: '6cd0d8' },       // cyan
+    { token: 'string', foreground: 'e08080' },
+    { token: 'identifier', foreground: 'c4c4c4' },            // default foreground
+    { token: 'operator.comparison', foreground: 'c490e0' },
+    { token: 'delimiter', foreground: '8a8a8a' },
 
     // Comments
     { token: 'comment', foreground: '687078', fontStyle: 'italic' },

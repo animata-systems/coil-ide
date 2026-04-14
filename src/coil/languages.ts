@@ -1,6 +1,6 @@
 import type { Monaco } from '@monaco-editor/react';
 import { dialectRegistry } from './dialects';
-import { buildMonarchLanguage } from './monarch';
+import { createCoilMonacoTokensProvider } from './monaco-tokens-provider';
 import {
   COIL_LIGHT_THEME, COIL_DARK_THEME,
   coilLightTheme, coilDarkTheme,
@@ -26,6 +26,10 @@ export function ensureThemes(monaco: Monaco): void {
 /**
  * Register a COIL language for the given dialect (lazy, cached).
  * Returns the language ID.
+ *
+ * Highlighting is driven by the runtime tokenizer (I-0015) via a
+ * programmatic `setTokensProvider`. The previous Monarch grammar has
+ * been removed — there is now a single source of truth (the lexer).
  */
 export function ensureLanguage(dialectName: string, monaco: Monaco): string {
   const id = languageId(dialectName);
@@ -35,7 +39,7 @@ export function ensureLanguage(dialectName: string, monaco: Monaco): string {
   if (!dialect) throw new Error(`Unknown dialect: ${dialectName}`);
 
   monaco.languages.register({ id });
-  monaco.languages.setMonarchTokensProvider(id, buildMonarchLanguage(dialect));
+  monaco.languages.setTokensProvider(id, createCoilMonacoTokensProvider(dialect, id, monaco));
   registeredLanguages.add(id);
   return id;
 }
