@@ -9,8 +9,11 @@ import {
 import {
   astToCoilH,
   bodyValueToText,
+  segmentsToText,
   type CoilHCell,
   type CoilHRow,
+  type CoilHValue,
+  type CoilHSegment,
 } from './coil-h';
 import enStandard from 'coil/dialects/en-standard/en-standard.json';
 import ruStandard from 'coil/dialects/ru-standard/ru-standard.json';
@@ -35,6 +38,37 @@ function findMod(row: CoilHRow, label: string): CoilHCell | undefined {
 
 function modIndex(row: CoilHRow, label: string): number {
   return row.cells.findIndex(c => c.kind === 'modifier' && c.label === label);
+}
+
+/** Flat-text projection of a CoilHValue — used in tests that care about
+ * the textual form and not the internal structure. */
+function valueText(value: CoilHValue): string {
+  switch (value.kind) {
+    case 'plain':
+      return value.text;
+    case 'ref':
+      return segmentsToText([{ kind: 'ref', ref: value.ref }]);
+    case 'refs':
+      return value.refs.map(r => segmentsToText([{ kind: 'ref', ref: r }])).join(', ');
+    case 'template':
+      return segmentsToText(value.segments);
+  }
+}
+
+/** Flat-text projection of a template/plain/ref/text cell. */
+function cellText(cell: CoilHCell): string {
+  switch (cell.kind) {
+    case 'text':
+      return cell.text;
+    case 'template':
+      return segmentsToText(cell.segments);
+    case 'modifier':
+      return valueText(cell.value);
+    case 'args-block':
+      return cell.args.map(a => `${a.key}: ${segmentsToText(a.value)}`).join('\n');
+    case 'result-block':
+      return cell.fields.map(f => f.name).join(',');
+  }
 }
 
 // ── bodyValueToText ────────────────────────────────────────
@@ -120,7 +154,9 @@ describe('Op.Define', () => {
     const src = 'ОПРЕДЕЛИ msg\n<< Привет, $name! >>\nКОНЕЦ';
     const r = rows(src, ru);
     expect(r[0].operatorId).toBe('Op.Define');
-    expect(r[0].cells).toEqual([{ kind: 'template', text: 'Привет, $name!' }]);
+    expect(r[0].cells).toHaveLength(1);
+    expect(r[0].cells[0].kind).toBe('template');
+    expect(cellText(r[0].cells[0])).toBe('Привет, $name!');
     expect(r[0].name).toBe('$msg');
     expect(r[0].templates).toEqual(['Привет, $name!']);
   });
@@ -164,10 +200,11 @@ describe('Op.Think', () => {
     // GOAL modifier with template value
     const goal = findMod(row, en.modifiers['Mod.Goal']);
     expect(goal).toBeDefined();
-    expect(goal).toMatchObject({
-      kind: 'modifier',
-      value: { kind: 'template', text: 'Classify this.' },
-    });
+    expect(goal!.kind).toBe('modifier');
+    if (goal!.kind === 'modifier') {
+      expect(goal!.value.kind).toBe('template');
+      expect(valueText(goal!.value)).toBe('Classify this.');
+    }
 
     // RESULT as structural result-block
     const resultCell = row.cells.find(c => c.kind === 'result-block');
@@ -217,19 +254,30 @@ describe('Op.Think', () => {
     expect(goalIdx).toBeLessThan(inputIdx);
     expect(inputIdx).toBeLessThan(resultIdx);
 
-    // КАК — plain value (ref)
+    // КАК — refs value (always array, even for one element)
     const asCell = row.cells[asIdx];
-    expect(asCell).toMatchObject({ kind: 'modifier', value: { kind: 'plain', text: '$role' } });
+    expect(asCell.kind).toBe('modifier');
+    if (asCell.kind === 'modifier') {
+      expect(asCell.value.kind).toBe('refs');
+      if (asCell.value.kind === 'refs') {
+        expect(asCell.value.refs).toHaveLength(1);
+        expect(asCell.value.refs[0].sigil).toBe('$');
+        expect(asCell.value.refs[0].name).toBe('role');
+      }
+      expect(valueText(asCell.value)).toBe('$role');
+    }
 
     // ЦЕЛЬ/ВХОД — template values
-    expect(row.cells[goalIdx]).toMatchObject({
-      kind: 'modifier',
-      value: { kind: 'template', text: 'Проверьте код.' },
-    });
-    expect(row.cells[inputIdx]).toMatchObject({
-      kind: 'modifier',
-      value: { kind: 'template', text: '$message' },
-    });
+    const goalCell = row.cells[goalIdx];
+    const inputCell = row.cells[inputIdx];
+    if (goalCell.kind === 'modifier') {
+      expect(goalCell.value.kind).toBe('template');
+      expect(valueText(goalCell.value)).toBe('Проверьте код.');
+    }
+    if (inputCell.kind === 'modifier') {
+      expect(inputCell.value.kind).toBe('template');
+      expect(valueText(inputCell.value)).toBe('$message');
+    }
 
     // РЕЗУЛЬТАТ fields
     const resultCell = row.cells[resultIdx];
@@ -271,17 +319,19 @@ describe('Op.Think', () => {
 
     // КОНТЕКСТ modifier present
     const ctx = findMod(row, ru.modifiers['Mod.Context']);
-    expect(ctx).toMatchObject({
-      kind: 'modifier',
-      value: { kind: 'template', text: 'Background info.' },
-    });
+    expect(ctx).toBeDefined();
+    if (ctx?.kind === 'modifier') {
+      expect(ctx.value.kind).toBe('template');
+      expect(valueText(ctx.value)).toBe('Background info.');
+    }
 
     // РЕЗУЛЬТАТ present
     expect(row.cells.some(c => c.kind === 'result-block')).toBe(true);
 
     // Anonymous body — trailing template cell
     const lastCell = row.cells[row.cells.length - 1];
-    expect(lastCell).toEqual({ kind: 'template', text: 'Additional instructions here.' });
+    expect(lastCell.kind).toBe('template');
+    expect(cellText(lastCell)).toBe('Additional instructions here.');
 
     // Template in templates list
     expect(row.templates).toContain('Additional instructions here.');
@@ -339,17 +389,28 @@ describe('Op.Think', () => {
     const r = rows(src, ru);
     const row = r[0];
 
-    // First cell = ЧЕРЕЗ, second = ИСПОЛЬЗУЯ
-    expect(row.cells[0]).toMatchObject({
-      kind: 'modifier',
-      label: ru.modifiers['Mod.Via'],
-      value: { kind: 'plain', text: '$agent' },
-    });
-    expect(row.cells[1]).toMatchObject({
-      kind: 'modifier',
-      label: ru.modifiers['Mod.Using'],
-      value: { kind: 'plain', text: '!search, !calc' },
-    });
+    // First cell = ЧЕРЕЗ (single ValueRef → kind='ref')
+    const viaCell = row.cells[0];
+    expect(viaCell.kind).toBe('modifier');
+    if (viaCell.kind === 'modifier') {
+      expect(viaCell.label).toBe(ru.modifiers['Mod.Via']);
+      expect(viaCell.value.kind).toBe('ref');
+      expect(valueText(viaCell.value)).toBe('$agent');
+    }
+
+    // Second cell = ИСПОЛЬЗУЯ (multiple ToolRefs → kind='refs')
+    const usingCell = row.cells[1];
+    expect(usingCell.kind).toBe('modifier');
+    if (usingCell.kind === 'modifier') {
+      expect(usingCell.label).toBe(ru.modifiers['Mod.Using']);
+      expect(usingCell.value.kind).toBe('refs');
+      if (usingCell.value.kind === 'refs') {
+        expect(usingCell.value.refs).toHaveLength(2);
+        expect(usingCell.value.refs.map(r => r.name)).toEqual(['search', 'calc']);
+        expect(usingCell.value.refs.every(r => r.sigil === '!')).toBe(true);
+      }
+      expect(valueText(usingCell.value)).toBe('!search, !calc');
+    }
   });
 });
 
@@ -369,21 +430,25 @@ describe('Op.Execute', () => {
     expect(row.operatorId).toBe('Op.Execute');
     expect(row.name).toBe('$result');
 
-    // USING modifier
-    expect(row.cells[0]).toMatchObject({
-      kind: 'modifier',
-      label: en.modifiers['Mod.Using'],
-      value: { kind: 'plain', text: '!search' },
-    });
+    // USING modifier (single ToolRef → kind='ref')
+    const usingCell = row.cells[0];
+    expect(usingCell.kind).toBe('modifier');
+    if (usingCell.kind === 'modifier') {
+      expect(usingCell.label).toBe(en.modifiers['Mod.Using']);
+      expect(usingCell.value.kind).toBe('ref');
+      expect(valueText(usingCell.value)).toBe('!search');
+    }
 
     // args-block
-    expect(row.cells[1]).toMatchObject({
-      kind: 'args-block',
-      args: [
-        { key: 'query', value: 'test query' },
-        { key: 'limit', value: '10' },
-      ],
-    });
+    const argsCell = row.cells[1];
+    expect(argsCell.kind).toBe('args-block');
+    if (argsCell.kind === 'args-block') {
+      expect(argsCell.args).toHaveLength(2);
+      expect(argsCell.args[0].key).toBe('query');
+      expect(segmentsToText(argsCell.args[0].value)).toBe('test query');
+      expect(argsCell.args[1].key).toBe('limit');
+      expect(segmentsToText(argsCell.args[1].value)).toBe('10');
+    }
   });
 
   it('maps ВЫПОЛНИ with ref arg value', () => {
@@ -395,15 +460,22 @@ describe('Op.Execute', () => {
     ].join('\n');
     const r = rows(src, ru);
     const row = r[0];
-    expect(row.cells[0]).toMatchObject({
-      kind: 'modifier',
-      label: ru.modifiers['Mod.Using'],
-      value: { kind: 'plain', text: '!api' },
-    });
-    expect(row.cells[1]).toMatchObject({
-      kind: 'args-block',
-      args: [{ key: 'data', value: '$input.value' }],
-    });
+    const usingCell = row.cells[0];
+    expect(usingCell.kind).toBe('modifier');
+    if (usingCell.kind === 'modifier') {
+      expect(usingCell.label).toBe(ru.modifiers['Mod.Using']);
+      expect(usingCell.value.kind).toBe('ref');
+      expect(valueText(usingCell.value)).toBe('!api');
+    }
+    const argsCell = row.cells[1];
+    expect(argsCell.kind).toBe('args-block');
+    if (argsCell.kind === 'args-block') {
+      expect(argsCell.args).toHaveLength(1);
+      expect(argsCell.args[0].key).toBe('data');
+      expect(segmentsToText(argsCell.args[0].value)).toBe('$input.value');
+      // The ref-kind argument value is preserved structurally
+      expect(argsCell.args[0].value[0].kind).toBe('ref');
+    }
   });
 });
 
@@ -418,13 +490,19 @@ describe('Op.Wait', () => {
     ].join('\n');
     const r = rows(src, en);
     expect(r[0].operatorId).toBe('Op.Wait');
-    expect(r[0].cells).toEqual([
-      {
-        kind: 'modifier',
-        label: en.modifiers['Mod.On'],
-        value: { kind: 'plain', text: '?step1' },
-      },
-    ]);
+    expect(r[0].cells).toHaveLength(1);
+    const onCell = r[0].cells[0];
+    expect(onCell.kind).toBe('modifier');
+    if (onCell.kind === 'modifier') {
+      expect(onCell.label).toBe(en.modifiers['Mod.On']);
+      expect(onCell.value.kind).toBe('refs');
+      if (onCell.value.kind === 'refs') {
+        expect(onCell.value.refs).toHaveLength(1);
+        expect(onCell.value.refs[0].sigil).toBe('?');
+        expect(onCell.value.refs[0].name).toBe('step1');
+      }
+      expect(valueText(onCell.value)).toBe('?step1');
+    }
   });
 
   it('maps ЖДИ with multiple promises and mode ALL', () => {
@@ -438,9 +516,14 @@ describe('Op.Wait', () => {
     const row = r[0];
 
     const on = findMod(row, ru.modifiers['Mod.On']);
-    expect(on).toMatchObject({
-      value: { kind: 'plain', text: '?review1, ?review2, ?review3' },
-    });
+    expect(on).toBeDefined();
+    if (on?.kind === 'modifier') {
+      expect(on.value.kind).toBe('refs');
+      if (on.value.kind === 'refs') {
+        expect(on.value.refs.map(r => r.name)).toEqual(['review1', 'review2', 'review3']);
+      }
+      expect(valueText(on.value)).toBe('?review1, ?review2, ?review3');
+    }
 
     const mode = findMod(row, ru.modifiers['Mod.Mode']);
     expect(mode).toMatchObject({
@@ -480,9 +563,9 @@ describe('Op.Signal', () => {
     const row = r[0];
     expect(row.operatorId).toBe('Op.Signal');
     expect(row.name).toBe('~updates');
-    expect(row.cells).toEqual([
-      { kind: 'template', text: 'New data available: $result.summary' },
-    ]);
+    expect(row.cells).toHaveLength(1);
+    expect(row.cells[0].kind).toBe('template');
+    expect(cellText(row.cells[0])).toBe('New data available: $result.summary');
     expect(row.templates).toContain('New data available: $result.summary');
   });
 });
@@ -505,16 +588,29 @@ describe('Op.Send', () => {
     const r = rows(src, en);
     const send = r.find(row => row.operatorId === 'Op.Send')!;
 
-    expect(findMod(send, en.modifiers['Mod.To'])).toMatchObject({
-      value: { kind: 'plain', text: '#main' },
-    });
-    expect(findMod(send, en.modifiers['Mod.For'])).toMatchObject({
-      value: { kind: 'plain', text: '@user' },
-    });
+    const toMod = findMod(send, en.modifiers['Mod.To']);
+    expect(toMod).toBeDefined();
+    if (toMod?.kind === 'modifier') {
+      expect(valueText(toMod.value)).toBe('#main');
+    }
+
+    const forMod = findMod(send, en.modifiers['Mod.For']);
+    expect(forMod).toBeDefined();
+    if (forMod?.kind === 'modifier') {
+      // ParticipantRef[] always → kind='refs' (even with one element)
+      expect(forMod.value.kind).toBe('refs');
+      if (forMod.value.kind === 'refs') {
+        expect(forMod.value.refs).toHaveLength(1);
+        expect(forMod.value.refs[0].sigil).toBe('@');
+        expect(forMod.value.refs[0].name).toBe('user');
+      }
+      expect(valueText(forMod.value)).toBe('@user');
+    }
 
     // Template cell at the end
     const tpl = send.cells.find(c => c.kind === 'template');
-    expect(tpl).toEqual({ kind: 'template', text: 'Hello, $name!' });
+    expect(tpl).toBeDefined();
+    expect(cellText(tpl!)).toBe('Hello, $name!');
   });
 });
 
@@ -628,14 +724,15 @@ describe('Op.Each', () => {
     const r = rows(src, en);
     const full = r.filter(row => row.mode === 'full');
     expect(full[0].operatorId).toBe('Op.Each');
-    expect(full[0].cells).toEqual([
-      { kind: 'text', text: '$item' },
-      {
-        kind: 'modifier',
-        label: en.modifiers['Mod.From'],
-        value: { kind: 'plain', text: '$list' },
-      },
-    ]);
+    expect(full[0].cells).toHaveLength(2);
+    expect(full[0].cells[0]).toEqual({ kind: 'text', text: '$item' });
+    const fromCell = full[0].cells[1];
+    expect(fromCell.kind).toBe('modifier');
+    if (fromCell.kind === 'modifier') {
+      expect(fromCell.label).toBe(en.modifiers['Mod.From']);
+      expect(fromCell.value.kind).toBe('ref');
+      expect(valueText(fromCell.value)).toBe('$list');
+    }
     expect(full[1].step).toEqual([1, 1]);
   });
 });
@@ -665,7 +762,9 @@ describe('mixed operators', () => {
     expect(r[1].cells[0].kind).toBe('text');
     expect(r[2].step).toEqual([2]);
     expect(r[2].operatorId).toBe('Op.Receive');
-    expect(r[2].cells).toEqual([{ kind: 'template', text: 'What is your name?' }]);
+    expect(r[2].cells).toHaveLength(1);
+    expect(r[2].cells[0].kind).toBe('template');
+    expect(cellText(r[2].cells[0])).toBe('What is your name?');
     expect(r[3].step).toEqual([3]);
     expect(r[3].operatorId).toBe('Op.Exit');
   });
@@ -764,12 +863,14 @@ describe('no physical <<>> in template cells', () => {
     for (const row of r) {
       for (const cell of row.cells) {
         if (cell.kind === 'template') {
-          expect(cell.text).not.toContain('<<');
-          expect(cell.text).not.toContain('>>');
+          const flat = segmentsToText(cell.segments);
+          expect(flat).not.toContain('<<');
+          expect(flat).not.toContain('>>');
         }
         if (cell.kind === 'modifier' && cell.value.kind === 'template') {
-          expect(cell.value.text).not.toContain('<<');
-          expect(cell.value.text).not.toContain('>>');
+          const flat = segmentsToText(cell.value.segments);
+          expect(flat).not.toContain('<<');
+          expect(flat).not.toContain('>>');
         }
       }
     }

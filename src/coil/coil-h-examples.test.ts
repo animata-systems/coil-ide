@@ -7,7 +7,7 @@ import {
   KeywordIndex,
   type DialectTable,
 } from 'coil-runtime/browser';
-import { astToCoilH } from './coil-h';
+import { astToCoilH, segmentsToText, type CoilHRef, type CoilHRow } from './coil-h';
 import enStandard from 'coil/dialects/en-standard/en-standard.json';
 import ruStandard from 'coil/dialects/ru-standard/ru-standard.json';
 
@@ -136,6 +136,86 @@ describe('Phase 2 examples — no degraded rows', () => {
  * leak into structural template cells. The renderer owns those markers
  * visually — data carries trimmed plain text.
  */
+/**
+ * I-0010 invariant: for every resolvable reference in a template or
+ * modifier value, `targetStep` must point at the row where the name is
+ * actually declared. This exercises every example end-to-end — the
+ * declaration index has to stay consistent with the visible step
+ * numbering in the same pass.
+ */
+function stepKey(row: CoilHRow): string {
+  return row.step ? row.step.join('.') : '';
+}
+
+function collectRefs(row: CoilHRow): CoilHRef[] {
+  const refs: CoilHRef[] = [];
+  const walk = (segs: { kind: 'text'; text: string } | { kind: 'ref'; ref: CoilHRef }) => {
+    if (segs.kind === 'ref') refs.push(segs.ref);
+  };
+  for (const cell of row.cells) {
+    if (cell.kind === 'template') cell.segments.forEach(walk);
+    if (cell.kind === 'args-block') {
+      for (const a of cell.args) a.value.forEach(walk);
+    }
+    if (cell.kind === 'modifier') {
+      if (cell.value.kind === 'ref') refs.push(cell.value.ref);
+      if (cell.value.kind === 'refs') refs.push(...cell.value.refs);
+      if (cell.value.kind === 'template') cell.value.segments.forEach(walk);
+    }
+  }
+  return refs;
+}
+
+describe('I-0010 invariant — ref targetStep points at declaration', () => {
+  const allExamples = [...phase1Examples, ...phase2Examples];
+  for (const { file, dialect: dialectName } of allExamples) {
+    it(`${file} — every resolved ref points at its declaration`, () => {
+      const source = readExample(file);
+      const dialect = dialects[dialectName];
+      const rows = parseAndMap(source, dialect);
+
+      // Build a lookup from step-key to row for cross-checking.
+      const byStep = new Map<string, CoilHRow>();
+      for (const row of rows) {
+        const key = stepKey(row);
+        if (key) byStep.set(key, row);
+      }
+
+      for (const row of rows) {
+        for (const ref of collectRefs(row)) {
+          if (ref.targetStep === null) continue; // unresolved / external — allowed
+
+          const targetKey = ref.targetStep.join('.');
+          const target = byStep.get(targetKey);
+          expect(target, `${file}: ref ${ref.sigil}${ref.name} at step ${stepKey(row)} → step ${targetKey} (missing)`)
+            .toBeDefined();
+          if (!target) continue;
+
+          // The declared name in the target row must match the ref.
+          // I-0013: a `?<name>` ref resolves to the same row as `$<name>`
+          // (the named operator decleares both). The row's `name` field
+          // carries the value-sigil form (`$<name>`), so collapse `?` → `$`
+          // for the comparison. Dynamic refs already resolve through `$`.
+          const declSigil =
+            ref.dynamic ? '$' :
+            ref.sigil === '?' ? '$' :
+            ref.sigil;
+          const expectedName = `${declSigil}${ref.name}`;
+          if (declSigil === '@' || declSigil === '!') {
+            // ACTORS / TOOLS declare many names in one row — check presence.
+            const targetCell = target.cells[0];
+            const names = targetCell.kind === 'text' ? targetCell.text.split(', ') : [];
+            expect(names, `${file}: ${expectedName} at step ${stepKey(row)}`).toContain(ref.name);
+          } else {
+            expect(target.name, `${file}: ref ${ref.sigil}${ref.name} at step ${stepKey(row)} → target step ${targetKey}`)
+              .toBe(expectedName);
+          }
+        }
+      }
+    });
+  }
+});
+
 describe('I-0005 invariant — no <<>> in template cells', () => {
   const allExamples = [...phase1Examples, ...phase2Examples];
   for (const { file, dialect: dialectName } of allExamples) {
@@ -147,12 +227,14 @@ describe('I-0005 invariant — no <<>> in template cells', () => {
       for (const row of rows) {
         for (const cell of row.cells) {
           if (cell.kind === 'template') {
-            expect(cell.text, `${file} row step=${row.step?.join('.')}`).not.toContain('<<');
-            expect(cell.text).not.toContain('>>');
+            const flat = segmentsToText(cell.segments);
+            expect(flat, `${file} row step=${row.step?.join('.')}`).not.toContain('<<');
+            expect(flat).not.toContain('>>');
           }
           if (cell.kind === 'modifier' && cell.value.kind === 'template') {
-            expect(cell.value.text, `${file} row step=${row.step?.join('.')} mod=${cell.label}`).not.toContain('<<');
-            expect(cell.value.text).not.toContain('>>');
+            const flat = segmentsToText(cell.value.segments);
+            expect(flat, `${file} row step=${row.step?.join('.')} mod=${cell.label}`).not.toContain('<<');
+            expect(flat).not.toContain('>>');
           }
         }
       }

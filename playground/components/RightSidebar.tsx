@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { AlertCircle, AlertTriangle, Info } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Info, Code, Eye } from 'lucide-react';
 import {
   usePipeline,
   dialectRegistry,
@@ -90,6 +90,7 @@ export function CoilHPanel() {
   const { ast, source, parseError } = usePipeline();
   const { activeExample } = useExample();
   const [coilHDialect, setCoilHDialect] = useState<string>(activeExample?.dialect ?? DEFAULT_DIALECT);
+  const [markdownEnabled, setMarkdownEnabled] = useState(true);
 
   useEffect(() => {
     setCoilHDialect(activeExample?.dialect ?? DEFAULT_DIALECT);
@@ -102,7 +103,9 @@ export function CoilHPanel() {
     return astToCoilH(ast, source, viewDialect);
   }, [ast, source, viewDialect]);
 
-  const renderTemplate = useCallback(
+  // I-0014: segment-aware translation hook. Operates on text segments
+  // only — ref segments retain their typed structure for navigation.
+  const renderTextSegment = useCallback(
     (text: string) => {
       if (!activeExample) return text;
       return translateTemplate(activeExample.id, text, coilHDialect);
@@ -153,20 +156,36 @@ export function CoilHPanel() {
         </span>
       </div>
 
-      <div className="shrink-0 px-4 py-2 border-b border-foreground/5">
+      <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-foreground/5">
         <select
           value={coilHDialect}
           onChange={e => setCoilHDialect(e.target.value)}
-          className="w-full text-xs px-2 py-1.5 rounded-md border border-border bg-input text-foreground"
+          className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded-md border border-border bg-input text-foreground"
         >
           {dialectEntries.map(([name, d]) => (
             <option key={name} value={name}>{d.label}</option>
           ))}
         </select>
+        <button
+          type="button"
+          onClick={() => setMarkdownEnabled(v => !v)}
+          title={markdownEnabled ? 'Показать сырой текст' : 'Включить Markdown'}
+          aria-pressed={markdownEnabled}
+          className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-input text-foreground/70 hover:text-foreground hover:bg-foreground/5 transition-colors"
+        >
+          {markdownEnabled
+            ? <Eye className="h-3.5 w-3.5" />
+            : <Code className="h-3.5 w-3.5" />}
+        </button>
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto">
-        <CoilHTable rows={rows} dialect={viewDialect} renderTemplate={renderTemplate} />
+        <CoilHTable
+          rows={rows}
+          dialect={viewDialect}
+          renderTextSegment={renderTextSegment}
+          markdownTemplates={markdownEnabled}
+        />
       </div>
     </div>
   );

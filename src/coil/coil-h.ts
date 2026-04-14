@@ -16,18 +16,44 @@ import type {
   OperatorNode,
   CommentNode,
   ExpressionNode,
+  ChannelRef,
+  ParticipantRef,
+  ToolRef,
+  PromiseRef,
+  ValueRef,
 } from 'coil-runtime/browser';
 
-// ── Structural cells (I-0005) ──────────────────────────────
+// ── Structural cells (I-0005, I-0010) ──────────────────────
 //
-// `CoilHRow.cells` replaces the previous `body: string`. Physical
-// template markers `<<>>` and modifier/value separation live in the
-// renderer, not in the data. Templates always carry the trimmed
-// plain-text form without `<<`/`>>`.
+// Cells carry structured content. Reference information flows from
+// AST through COIL-H to the renderer via `CoilHSegment[]` — that lets
+// the view layer render clickable links and resolve targets.
+//
+// Physical template markers `<<>>` and modifier/value separation live
+// in the renderer, not in the data. Templates carry segments without
+// `<<`/`>>` wrappers.
+
+export type Sigil = '$' | '@' | '!' | '#' | '?' | '~';
+
+export interface CoilHRef {
+  sigil: Sigil;
+  name: string;
+  path: string[];
+  /** `true` when the name is a `$`-substitution (e.g. `@$assignee`). */
+  dynamic: boolean;
+  /** Step where the name is declared; `null` if unresolved/external. */
+  targetStep: number[] | null;
+}
+
+export type CoilHSegment =
+  | { kind: 'text'; text: string }
+  | { kind: 'ref'; ref: CoilHRef };
 
 export type CoilHValue =
   | { kind: 'plain'; text: string }
-  | { kind: 'template'; text: string };
+  | { kind: 'template'; segments: CoilHSegment[] }
+  | { kind: 'ref'; ref: CoilHRef }
+  | { kind: 'refs'; refs: CoilHRef[] };
 
 export interface ResultFieldRow {
   name: string;
@@ -38,9 +64,9 @@ export interface ResultFieldRow {
 
 export type CoilHCell =
   | { kind: 'modifier'; label: string; value: CoilHValue }
-  | { kind: 'template'; text: string }
+  | { kind: 'template'; segments: CoilHSegment[] }
   | { kind: 'result-block'; label: string; fields: ResultFieldRow[] }
-  | { kind: 'args-block'; args: { key: string; value: string }[] }
+  | { kind: 'args-block'; args: { key: string; value: CoilHSegment[] }[] }
   | { kind: 'text'; text: string };
 
 export interface CoilHRow {
@@ -49,11 +75,160 @@ export interface CoilHRow {
   cells: CoilHCell[];
   name: string;
   mode: 'full' | 'degraded' | 'divider';
-  /** Original template texts for translation matching (full mode only) */
+  /** Flat-text renderings of templates for translation matching (full mode only) */
   templates: string[];
 }
 
-// ── Helpers ────────────────────────────────────────────────
+// ── Declaration index ─────────────────────────────────────
+//
+// First pass over the AST. Maps `${sigil}${name}` → step where the
+// name is declared. First-wins on duplicates.
+
+export type DeclarationIndex = Map<string, number[]>;
+
+function indexNodes(
+  nodes: (OperatorNode | CommentNode)[],
+  prefix: number[],
+  map: DeclarationIndex,
+): void {
+  let counter = 0;
+  for (const node of nodes) {
+    if (node.kind === 'Comment') continue;
+    counter++;
+    const step = [...prefix, counter];
+
+    const addOnce = (key: string) => {
+      if (!map.has(key)) map.set(key, step);
+    };
+
+    switch (node.kind) {
+      case 'Op.Actors':
+        for (const n of node.names) addOnce(`@${n}`);
+        break;
+      case 'Op.Tools':
+        for (const n of node.names) addOnce(`!${n}`);
+        break;
+      case 'Op.Define':
+        addOnce(`$${node.name}`);
+        break;
+      case 'Op.Set':
+        // SET mutates an existing binding; do not shadow the original
+        // declaration, just register the target if not already indexed.
+        addOnce(`$${node.target.name}`);
+        break;
+      case 'Op.Receive':
+      case 'Op.Think':
+      case 'Op.Execute':
+        // I-0013: named operator declares both `$<name>` (value) and
+        // `?<name>` (promise/handle). WAIT ON ?ref resolves to the
+        // operator that produced it.
+        addOnce(`$${node.name}`);
+        addOnce(`?${node.name}`);
+        break;
+      case 'Op.Send':
+        if (node.name) {
+          addOnce(`$${node.name}`);
+          addOnce(`?${node.name}`);
+        }
+        break;
+      case 'Op.Wait':
+        if (node.name) {
+          addOnce(`$${node.name}`);
+          addOnce(`?${node.name}`);
+        }
+        break;
+      case 'Op.Signal':
+        addOnce(`~${node.target.name}`);
+        break;
+      case 'Op.If':
+      case 'Op.Repeat':
+        indexNodes(node.body, step, map);
+        break;
+      case 'Op.Each':
+        // `element` is declared at the EACH row itself — nested operators
+        // resolve `$element` to the EACH step.
+        addOnce(`$${node.element.name}`);
+        indexNodes(node.body, step, map);
+        break;
+    }
+  }
+}
+
+export function buildDeclarationIndex(nodes: (OperatorNode | CommentNode)[]): DeclarationIndex {
+  const map: DeclarationIndex = new Map();
+  indexNodes(nodes, [], map);
+  return map;
+}
+
+// ── Segment helpers ────────────────────────────────────────
+
+function lookup(index: DeclarationIndex, sigil: Sigil, name: string): number[] | null {
+  return index.get(`${sigil}${name}`) ?? null;
+}
+
+function makeRef(
+  sigil: Sigil,
+  name: string,
+  path: string[],
+  dynamic: boolean,
+  index: DeclarationIndex,
+): CoilHRef {
+  // Dynamic refs always resolve through the `$`-name of the variable
+  // that supplies the value, regardless of the outer sigil.
+  const resolveSigil: Sigil = dynamic ? '$' : sigil;
+  return {
+    sigil,
+    name,
+    path,
+    dynamic,
+    targetStep: lookup(index, resolveSigil, name),
+  };
+}
+
+function textSeg(text: string): CoilHSegment {
+  return { kind: 'text', text };
+}
+
+function refSeg(ref: CoilHRef): CoilHSegment {
+  return { kind: 'ref', ref };
+}
+
+export function templateToSegments(tpl: TemplateNode, index: DeclarationIndex): CoilHSegment[] {
+  return tpl.parts.map((p): CoilHSegment =>
+    p.type === 'text'
+      ? textSeg(p.value)
+      : refSeg(makeRef('$', p.name, p.path, false, index)),
+  );
+}
+
+function trimSegments(segments: CoilHSegment[]): CoilHSegment[] {
+  if (segments.length === 0) return segments;
+  const copy = segments.slice();
+  const first = copy[0];
+  if (first.kind === 'text') {
+    const trimmed = first.text.replace(/^\s+/, '');
+    copy[0] = trimmed === '' ? first : { kind: 'text', text: trimmed };
+    if (trimmed === '') copy.shift();
+  }
+  if (copy.length === 0) return copy;
+  const last = copy[copy.length - 1];
+  if (last.kind === 'text') {
+    const trimmed = last.text.replace(/\s+$/, '');
+    if (trimmed === '') copy.pop();
+    else copy[copy.length - 1] = { kind: 'text', text: trimmed };
+  }
+  return copy;
+}
+
+export function segmentsToText(segments: CoilHSegment[]): string {
+  return segments.map(s =>
+    s.kind === 'text'
+      ? s.text
+      : `${s.ref.dynamic ? `${s.ref.sigil}$` : s.ref.sigil}${s.ref.name}${s.ref.path.map(f => `.${f}`).join('')}`,
+  ).join('');
+}
+
+// ── Legacy flat-text helpers (kept for bodyValueToText callers) ─────
 
 export function refToText(name: string, path: string[]): string {
   return `$${name}${path.length ? '.' + path.join('.') : ''}`;
@@ -87,19 +262,75 @@ export function bodyValueToText(body: BodyValue): string {
   }
 }
 
-function channelRefToText(ref: SendNode['to']): string {
-  if (!ref) return '';
-  return '#' + ref.segments.map(s =>
-    s.kind === 'literal' ? s.value : `$${s.name}`,
-  ).join('/');
+// ── Typed-ref adapters ─────────────────────────────────────
+
+function valueRefToRef(ref: ValueRef, index: DeclarationIndex): CoilHRef {
+  return makeRef('$', ref.name, ref.path, false, index);
 }
+
+function participantRefToRef(ref: ParticipantRef, index: DeclarationIndex): CoilHRef {
+  if (ref.ref.kind === 'literal') {
+    return makeRef('@', ref.ref.value, [], false, index);
+  }
+  return makeRef('@', ref.ref.name, ref.ref.path, true, index);
+}
+
+function toolRefToRef(ref: ToolRef, index: DeclarationIndex): CoilHRef {
+  if (ref.ref.kind === 'literal') {
+    return makeRef('!', ref.ref.value, [], false, index);
+  }
+  return makeRef('!', ref.ref.name, ref.ref.path, true, index);
+}
+
+function promiseRefToRef(ref: PromiseRef, index: DeclarationIndex): CoilHRef {
+  return makeRef('?', ref.name, [], false, index);
+}
+
+function channelRefToSegments(ref: ChannelRef, index: DeclarationIndex): CoilHSegment[] {
+  // `#a/b/$c` becomes segments where literal parts accumulate into a
+  // single `text` segment prefixed with `#`, and dynamic parts become
+  // refs resolving to the underlying `$name`.
+  const segments: CoilHSegment[] = [];
+  let buffer = '#';
+  for (let i = 0; i < ref.segments.length; i++) {
+    const s = ref.segments[i];
+    const sep = i === 0 ? '' : '/';
+    if (s.kind === 'literal') {
+      buffer += sep + s.value;
+    } else {
+      buffer += sep;
+      if (buffer) segments.push(textSeg(buffer));
+      buffer = '';
+      segments.push(refSeg(makeRef('#', s.name, s.path, true, index)));
+    }
+  }
+  if (buffer) segments.push(textSeg(buffer));
+  return segments;
+}
+
+// ── Value constructors ─────────────────────────────────────
 
 function plain(text: string): CoilHValue {
   return { kind: 'plain', text };
 }
 
-function tplValue(text: string): CoilHValue {
-  return { kind: 'template', text };
+function tplValue(segments: CoilHSegment[]): CoilHValue {
+  return { kind: 'template', segments };
+}
+
+function refValue(ref: CoilHRef): CoilHValue {
+  return { kind: 'ref', ref };
+}
+
+/**
+ * Build a modifier value for a multi-ref field (`FOR`, `USING`, `AS`, `ON`).
+ * Always produces `kind='refs'`, even for a single element — this matches
+ * the AST shape (`ParticipantRef[]`, `ToolRef[]`, …) and keeps the
+ * renderer path uniform across single and multiple refs. The separator
+ * (`, ` by default) is the renderer's concern.
+ */
+function refsValue(refs: CoilHRef[]): CoilHValue {
+  return { kind: 'refs', refs };
 }
 
 function durationText(
@@ -110,14 +341,14 @@ function durationText(
   return `${timeout.value}${suffix}`;
 }
 
-function argValueToText(value: ArgEntry['value']): string {
+function argValueToSegments(value: ArgEntry['value'], index: DeclarationIndex): CoilHSegment[] {
   switch (value.type) {
     case 'ref':
-      return refToText(value.name, value.path);
+      return [refSeg(valueRefToRef(value, index))];
     case 'string':
-      return value.value;
+      return [textSeg(value.value)];
     case 'number':
-      return String(value.value);
+      return [textSeg(String(value.value))];
   }
 }
 
@@ -136,31 +367,64 @@ function buildResultFields(fields: ResultField[], dialect: DialectTable): Result
   });
 }
 
+function segmentsFromTemplate(tpl: TemplateNode, index: DeclarationIndex): CoilHSegment[] {
+  return trimSegments(templateToSegments(tpl, index));
+}
+
+function segmentsNonEmpty(segments: CoilHSegment[]): boolean {
+  return segments.some(s => s.kind === 'ref' || s.text.length > 0);
+}
+
 // ── Per-operator cell builders ─────────────────────────────
 
-function buildSendCells(node: SendNode, dialect: DialectTable): CoilHCell[] {
+function buildSendCells(node: SendNode, dialect: DialectTable, index: DeclarationIndex): CoilHCell[] {
   const cells: CoilHCell[] = [];
 
   if (node.to) {
-    cells.push({
-      kind: 'modifier',
-      label: dialect.modifiers['Mod.To'],
-      value: plain(channelRefToText(node.to)),
-    });
+    const segs = channelRefToSegments(node.to, index);
+    // Channels currently have no declaration operator, so a purely
+    // literal channel (`#main`, `#support/tickets`) is non-navigable —
+    // render as `plain` text. TODO: when a `CHANNEL` declaration op
+    // lands, promote this to `kind='ref'` with `sigil='#'` and fill
+    // `targetStep`. Composite channels (containing dynamic segments)
+    // stay as `template` because the `$var` parts still need to be
+    // clickable refs.
+    if (segs.length === 1 && segs[0].kind === 'text') {
+      cells.push({
+        kind: 'modifier',
+        label: dialect.modifiers['Mod.To'],
+        value: plain(segs[0].text),
+      });
+    } else {
+      cells.push({
+        kind: 'modifier',
+        label: dialect.modifiers['Mod.To'],
+        value: tplValue(segs),
+      });
+    }
   }
   if (node.for.length > 0) {
     cells.push({
       kind: 'modifier',
       label: dialect.modifiers['Mod.For'],
-      value: plain(node.for.map(p => p.ref.kind === 'literal' ? `@${p.ref.value}` : `@$${p.ref.name}${p.ref.path.map(f => `.${f}`).join('')}`).join(', ')),
+      value: refsValue(node.for.map(p => participantRefToRef(p, index))),
     });
   }
   if (node.replyTo) {
-    cells.push({
-      kind: 'modifier',
-      label: dialect.modifiers['Mod.ReplyTo'],
-      value: plain(channelRefToText(node.replyTo)),
-    });
+    const segs = channelRefToSegments(node.replyTo, index);
+    if (segs.length === 1 && segs[0].kind === 'text') {
+      cells.push({
+        kind: 'modifier',
+        label: dialect.modifiers['Mod.ReplyTo'],
+        value: plain(segs[0].text),
+      });
+    } else {
+      cells.push({
+        kind: 'modifier',
+        label: dialect.modifiers['Mod.ReplyTo'],
+        value: tplValue(segs),
+      });
+    }
   }
   if (node.await) {
     const policyMap: Record<string, string> = {
@@ -183,20 +447,20 @@ function buildSendCells(node: SendNode, dialect: DialectTable): CoilHCell[] {
   }
 
   if (node.body) {
-    const text = templateToText(node.body).trim();
-    if (text) cells.push({ kind: 'template', text });
+    const segs = segmentsFromTemplate(node.body, index);
+    if (segmentsNonEmpty(segs)) cells.push({ kind: 'template', segments: segs });
   }
 
   return cells;
 }
 
-function buildReceiveCells(node: ReceiveNode): CoilHCell[] {
+function buildReceiveCells(node: ReceiveNode, index: DeclarationIndex): CoilHCell[] {
   if (!node.prompt) return [];
-  const text = templateToText(node.prompt).trim();
-  return text ? [{ kind: 'template', text }] : [];
+  const segs = segmentsFromTemplate(node.prompt, index);
+  return segmentsNonEmpty(segs) ? [{ kind: 'template', segments: segs }] : [];
 }
 
-function buildThinkCells(node: ThinkNode, dialect: DialectTable): CoilHCell[] {
+function buildThinkCells(node: ThinkNode, dialect: DialectTable, index: DeclarationIndex): CoilHCell[] {
   const cells: CoilHCell[] = [];
 
   // 1. Оснащение: ЧЕРЕЗ, КАК, ИСПОЛЬЗУЯ (I-0003)
@@ -204,52 +468,52 @@ function buildThinkCells(node: ThinkNode, dialect: DialectTable): CoilHCell[] {
     cells.push({
       kind: 'modifier',
       label: dialect.modifiers['Mod.Via'],
-      value: plain(refToText(node.via.name, node.via.path)),
+      value: refValue(valueRefToRef(node.via, index)),
     });
   }
   if (node.as.length > 0) {
     cells.push({
       kind: 'modifier',
       label: dialect.modifiers['Mod.As'],
-      value: plain(node.as.map(a => refToText(a.name, a.path)).join(', ')),
+      value: refsValue(node.as.map(a => valueRefToRef(a, index))),
     });
   }
   if (node.using.length > 0) {
     cells.push({
       kind: 'modifier',
       label: dialect.modifiers['Mod.Using'],
-      value: plain(node.using.map(t => t.ref.kind === 'literal' ? `!${t.ref.value}` : `!$${t.ref.name}${t.ref.path.map(f => `.${f}`).join('')}`).join(', ')),
+      value: refsValue(node.using.map(t => toolRefToRef(t, index))),
     });
   }
 
-  // 2. Постановка: ЦЕЛЬ, ВХОД, КОНТЕКСТ — модификаторы с template-значением
+  // 2. Постановка: ЦЕЛЬ, ВХОД, КОНТЕКСТ
   if (node.goal) {
-    const text = templateToText(node.goal).trim();
-    if (text) {
+    const segs = segmentsFromTemplate(node.goal, index);
+    if (segmentsNonEmpty(segs)) {
       cells.push({
         kind: 'modifier',
         label: dialect.modifiers['Mod.Goal'],
-        value: tplValue(text),
+        value: tplValue(segs),
       });
     }
   }
   if (node.input) {
-    const text = templateToText(node.input).trim();
-    if (text) {
+    const segs = segmentsFromTemplate(node.input, index);
+    if (segmentsNonEmpty(segs)) {
       cells.push({
         kind: 'modifier',
         label: dialect.modifiers['Mod.Input'],
-        value: tplValue(text),
+        value: tplValue(segs),
       });
     }
   }
   if (node.context) {
-    const text = templateToText(node.context).trim();
-    if (text) {
+    const segs = segmentsFromTemplate(node.context, index);
+    if (segmentsNonEmpty(segs)) {
       cells.push({
         kind: 'modifier',
         label: dialect.modifiers['Mod.Context'],
-        value: tplValue(text),
+        value: tplValue(segs),
       });
     }
   }
@@ -263,37 +527,37 @@ function buildThinkCells(node: ThinkNode, dialect: DialectTable): CoilHCell[] {
     });
   }
 
-  // 4. Анонимное тело (D-0032) — template-ячейка
+  // 4. Анонимное тело (D-0032)
   if (node.body) {
-    const text = templateToText(node.body).trim();
-    if (text) cells.push({ kind: 'template', text });
+    const segs = segmentsFromTemplate(node.body, index);
+    if (segmentsNonEmpty(segs)) cells.push({ kind: 'template', segments: segs });
   }
 
   return cells;
 }
 
-function buildExecuteCells(node: ExecuteNode, dialect: DialectTable): CoilHCell[] {
+function buildExecuteCells(node: ExecuteNode, dialect: DialectTable, index: DeclarationIndex): CoilHCell[] {
   const cells: CoilHCell[] = [];
   cells.push({
     kind: 'modifier',
     label: dialect.modifiers['Mod.Using'],
-    value: plain(node.tool.ref.kind === 'literal' ? `!${node.tool.ref.value}` : `!$${node.tool.ref.name}${node.tool.ref.path.map(f => `.${f}`).join('')}`),
+    value: refValue(toolRefToRef(node.tool, index)),
   });
   if (node.args.length > 0) {
     cells.push({
       kind: 'args-block',
-      args: node.args.map(a => ({ key: a.key, value: argValueToText(a.value) })),
+      args: node.args.map(a => ({ key: a.key, value: argValueToSegments(a.value, index) })),
     });
   }
   return cells;
 }
 
-function buildWaitCells(node: WaitNode, dialect: DialectTable): CoilHCell[] {
+function buildWaitCells(node: WaitNode, dialect: DialectTable, index: DeclarationIndex): CoilHCell[] {
   const cells: CoilHCell[] = [];
   cells.push({
     kind: 'modifier',
     label: dialect.modifiers['Mod.On'],
-    value: plain(node.on.map(p => `?${p.name}`).join(', ')),
+    value: refsValue(node.on.map(p => promiseRefToRef(p, index))),
   });
   if (node.mode) {
     const policyMap: Record<string, string> = {
@@ -356,7 +620,7 @@ function buildRepeatCells(node: RepeatNode, dialect: DialectTable, source: strin
   return cells;
 }
 
-function buildEachCells(node: EachNode, dialect: DialectTable): CoilHCell[] {
+function buildEachCells(node: EachNode, dialect: DialectTable, index: DeclarationIndex): CoilHCell[] {
   return [
     {
       kind: 'text',
@@ -365,12 +629,28 @@ function buildEachCells(node: EachNode, dialect: DialectTable): CoilHCell[] {
     {
       kind: 'modifier',
       label: dialect.modifiers['Mod.From'],
-      value: plain(refToText(node.from.name, node.from.path)),
+      value: refValue(valueRefToRef(node.from, index)),
     },
   ];
 }
 
 // ── AST walker ─────────────────────────────────────────────
+
+function templateToFlatText(tpl: TemplateNode, index: DeclarationIndex): string {
+  return segmentsToText(segmentsFromTemplate(tpl, index));
+}
+
+function bodyToCells(
+  body: BodyValue,
+  index: DeclarationIndex,
+): { cells: CoilHCell[]; templates: string[] } {
+  if (body.type === 'template') {
+    const segs = segmentsFromTemplate(body, index);
+    const flat = segmentsToText(segs);
+    return { cells: [{ kind: 'template', segments: segs }], templates: [flat] };
+  }
+  return { cells: [{ kind: 'text', text: bodyValueToText(body) }], templates: [] };
+}
 
 function convertNodes(
   nodes: (OperatorNode | CommentNode)[],
@@ -378,14 +658,12 @@ function convertNodes(
   rows: CoilHRow[],
   source: string,
   dialect: DialectTable,
+  index: DeclarationIndex,
 ): void {
   let counter = 0;
 
   for (const node of nodes) {
     if (node.kind === 'Comment') {
-      // Merge consecutive comments into one divider block so that a
-      // multi-line comment header renders as a single row, not a row per
-      // physical line.
       const prev = rows[rows.length - 1];
       if (prev && prev.mode === 'divider') {
         const firstCell = prev.cells[0];
@@ -411,12 +689,12 @@ function convertNodes(
     switch (node.kind) {
       case 'Op.Receive': {
         const templates: string[] = [];
-        if (node.prompt) templates.push(templateToText(node.prompt).trim());
+        if (node.prompt) templates.push(templateToFlatText(node.prompt, index));
         rows.push({
           step,
           operatorId: 'Op.Receive',
-          cells: buildReceiveCells(node),
-          name: node.name,
+          cells: buildReceiveCells(node, index),
+          name: `$${node.name}`,
           mode: 'full',
           templates,
         });
@@ -424,12 +702,12 @@ function convertNodes(
       }
       case 'Op.Send': {
         const templates: string[] = [];
-        if (node.body) templates.push(templateToText(node.body).trim());
+        if (node.body) templates.push(templateToFlatText(node.body, index));
         rows.push({
           step,
           operatorId: 'Op.Send',
-          cells: buildSendCells(node, dialect),
-          name: node.name ?? '',
+          cells: buildSendCells(node, dialect, index),
+          name: node.name ? `$${node.name}` : '',
           mode: 'full',
           templates,
         });
@@ -469,15 +747,7 @@ function convertNodes(
         break;
       }
       case 'Op.Define': {
-        const templates: string[] = [];
-        const cells: CoilHCell[] = [];
-        if (node.body.type === 'template') {
-          const text = templateToText(node.body).trim();
-          templates.push(text);
-          cells.push({ kind: 'template', text });
-        } else {
-          cells.push({ kind: 'text', text: bodyValueToText(node.body) });
-        }
+        const { cells, templates } = bodyToCells(node.body, index);
         rows.push({
           step,
           operatorId: 'Op.Define',
@@ -489,15 +759,7 @@ function convertNodes(
         break;
       }
       case 'Op.Set': {
-        const templates: string[] = [];
-        const cells: CoilHCell[] = [];
-        if (node.body.type === 'template') {
-          const text = templateToText(node.body).trim();
-          templates.push(text);
-          cells.push({ kind: 'template', text });
-        } else {
-          cells.push({ kind: 'text', text: bodyValueToText(node.body) });
-        }
+        const { cells, templates } = bodyToCells(node.body, index);
         rows.push({
           step,
           operatorId: 'Op.Set',
@@ -510,14 +772,14 @@ function convertNodes(
       }
       case 'Op.Think': {
         const templates: string[] = [];
-        if (node.goal) templates.push(templateToText(node.goal).trim());
-        if (node.input) templates.push(templateToText(node.input).trim());
-        if (node.context) templates.push(templateToText(node.context).trim());
-        if (node.body) templates.push(templateToText(node.body).trim());
+        if (node.goal) templates.push(templateToFlatText(node.goal, index));
+        if (node.input) templates.push(templateToFlatText(node.input, index));
+        if (node.context) templates.push(templateToFlatText(node.context, index));
+        if (node.body) templates.push(templateToFlatText(node.body, index));
         rows.push({
           step,
           operatorId: 'Op.Think',
-          cells: buildThinkCells(node, dialect),
+          cells: buildThinkCells(node, dialect, index),
           name: `$${node.name}`,
           mode: 'full',
           templates,
@@ -528,7 +790,7 @@ function convertNodes(
         rows.push({
           step,
           operatorId: 'Op.Execute',
-          cells: buildExecuteCells(node, dialect),
+          cells: buildExecuteCells(node, dialect, index),
           name: `$${node.name}`,
           mode: 'full',
           templates: [],
@@ -539,20 +801,20 @@ function convertNodes(
         rows.push({
           step,
           operatorId: 'Op.Wait',
-          cells: buildWaitCells(node, dialect),
-          name: '',
+          cells: buildWaitCells(node, dialect, index),
+          name: node.name ? `$${node.name}` : '',
           mode: 'full',
           templates: [],
         });
         break;
       }
       case 'Op.Signal': {
-        const bodyText = templateToText(node.body).trim();
+        const segs = segmentsFromTemplate(node.body, index);
         const templates: string[] = [];
         const cells: CoilHCell[] = [];
-        if (bodyText) {
-          templates.push(bodyText);
-          cells.push({ kind: 'template', text: bodyText });
+        if (segmentsNonEmpty(segs)) {
+          templates.push(segmentsToText(segs));
+          cells.push({ kind: 'template', segments: segs });
         }
         rows.push({
           step,
@@ -573,7 +835,7 @@ function convertNodes(
           mode: 'full',
           templates: [],
         });
-        convertNodes(node.body, step, rows, source, dialect);
+        convertNodes(node.body, step, rows, source, dialect, index);
         break;
       }
       case 'Op.Repeat': {
@@ -585,19 +847,19 @@ function convertNodes(
           mode: 'full',
           templates: [],
         });
-        convertNodes(node.body, step, rows, source, dialect);
+        convertNodes(node.body, step, rows, source, dialect, index);
         break;
       }
       case 'Op.Each': {
         rows.push({
           step,
           operatorId: 'Op.Each',
-          cells: buildEachCells(node, dialect),
+          cells: buildEachCells(node, dialect, index),
           name: '',
           mode: 'full',
           templates: [],
         });
-        convertNodes(node.body, step, rows, source, dialect);
+        convertNodes(node.body, step, rows, source, dialect, index);
         break;
       }
       case 'Unsupported': {
@@ -616,7 +878,8 @@ function convertNodes(
 }
 
 export function astToCoilH(ast: ScriptNode, source: string, viewDialect: DialectTable): CoilHRow[] {
+  const index = buildDeclarationIndex(ast.nodes);
   const rows: CoilHRow[] = [];
-  convertNodes(ast.nodes, [], rows, source, viewDialect);
+  convertNodes(ast.nodes, [], rows, source, viewDialect, index);
   return rows;
 }
