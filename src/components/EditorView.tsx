@@ -138,6 +138,9 @@ export function EditorView({
           verticalScrollbarSize: 10,
           horizontalScrollbarSize: 10,
         },
+        unicodeHighlight: {
+          ambiguousCharacters: false,
+        },
       }}
     />
   );
